@@ -6,6 +6,9 @@
         <p>WASD - Mover auto</p>
       </div>
     </div>
+    <div id="joystick-container">
+      <div id="joystick"></div>
+    </div>
   </div>
 </template>
 
@@ -49,7 +52,6 @@ export default {
   }
 }
 </script>
-
 <style>
 * {
   margin: 0;
@@ -91,5 +93,39 @@ export default {
 .controls-info p {
   margin: 5px 0;
   font-size: 14px;
+}
+
+#joystick-container {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  width: 120px;
+  height: 120px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 50%;
+  touch-action: none;
+}
+
+#joystick {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 60px;
+  height: 60px;
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+/* Por defecto visible */
+#joystick-container {
+  display: block;
+}
+
+/* En pantallas grandes lo ocultamos */
+@media (min-width: 1024px) {
+  #joystick-container {
+    display: none;
+  }
 }
 </style>

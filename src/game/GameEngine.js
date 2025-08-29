@@ -33,6 +33,9 @@ export default class GameEngine {
     }
 
     init() {
+        if (/Mobi|Android/i.test(navigator.userAgent)) {
+            this.setupJoystick()
+        }
         console.log('Initializing GameEngine...')
         try {
             this.initThreeJS()
@@ -55,6 +58,65 @@ export default class GameEngine {
             console.error('Error initializing GameEngine:', error)
         }
     }
+
+    setupJoystick() {
+        const container = document.getElementById('joystick-container')
+        const joystick = document.getElementById('joystick')
+
+        let dragging = false
+        let startX, startY
+
+        const maxDistance = 40 // hasta dónde se puede mover el stick
+
+        const handleMove = (x, y) => {
+            const dx = x - startX
+            const dy = y - startY
+            const dist = Math.min(Math.sqrt(dx * dx + dy * dy), maxDistance)
+
+            const angle = Math.atan2(dy, dx)
+
+            const offsetX = dist * Math.cos(angle)
+            const offsetY = dist * Math.sin(angle)
+
+            joystick.style.transform = `translate(calc(-50% + ${offsetX}px), calc(-50% + ${offsetY}px))`
+
+            // reset
+            this.keys.w = this.keys.a = this.keys.s = this.keys.d = false
+
+            if (dist > 10) { // zona muerta
+
+                // 🚗 Aceleración
+                if (dy < -10) this.keys.w = true       // hacia arriba = acelerar
+                if (dy > 10) this.keys.s = true       // hacia abajo = reversa
+
+                // 🚗 Dirección (se puede combinar con w/s)
+                if (dx < -10) this.keys.a = true       // izquierda
+                if (dx > 10) this.keys.d = true       // derecha
+            }
+        }
+
+
+
+        container.addEventListener('touchstart', e => {
+            dragging = true
+            const touch = e.touches[0]
+            startX = touch.clientX
+            startY = touch.clientY
+        })
+
+        container.addEventListener('touchmove', e => {
+            if (!dragging) return
+            const touch = e.touches[0]
+            handleMove(touch.clientX, touch.clientY)
+        })
+
+        container.addEventListener('touchend', () => {
+            dragging = false
+            joystick.style.transform = 'translate(-50%, -50%)'
+            this.keys.w = this.keys.a = this.keys.s = this.keys.d = false
+        })
+    }
+
 
     initThreeJS() {
         console.log('Canvas element:', this.canvas)
@@ -93,7 +155,9 @@ export default class GameEngine {
         this.world.gravity.set(0, -9.82, 0)
 
         // Usar broadphase simple
-        this.world.broadphase = new CANNON.NaiveBroadphase()
+        this.world.broadphase = new CANNON.SAPBroadphase(this.world)
+        this.world.broadphase.axisIndex = 2 // Z-axis
+
 
         // Configuración básica del solver
         this.world.solver.iterations = 10
@@ -132,8 +196,9 @@ export default class GameEngine {
     }
 
     initGround() {
-        // Isla principal (círculo visual)
-        const groundGeometry = new THREE.CircleGeometry(30, 64)
+        // --- Visual ---
+        const groundRadius = 30
+        const groundGeometry = new THREE.CircleGeometry(groundRadius, 64)
         const groundMaterial = new THREE.MeshLambertMaterial({ color: 0x55aa55 })
         this.ground = new THREE.Mesh(groundGeometry, groundMaterial)
         this.ground.rotation.x = -Math.PI / 2
@@ -141,23 +206,24 @@ export default class GameEngine {
         this.ground.receiveShadow = true
         this.scene.add(this.ground)
 
-        // Isla secundaria
-        const islandGeometry = new THREE.CircleGeometry(20, 64)
+        // Isla secundaria (igual ya la tienes coherente con 20)
+        const islandRadius = 20
+        const islandGeometry = new THREE.CircleGeometry(islandRadius, 64)
         const islandMaterial = new THREE.MeshLambertMaterial({ color: 0x559955 })
         this.island = new THREE.Mesh(islandGeometry, islandMaterial)
         this.island.rotation.x = -Math.PI / 2
-        this.island.position.set(0, 0, -80) // detrás de la primera
+        this.island.position.set(0, 0, -80)
         this.island.receiveShadow = true
         this.scene.add(this.island)
 
-        // Físicas de las islas (usamos cilindros muy chatos como colisión aproximada)
-        const groundShape = new CANNON.Cylinder(40, 40, 1, 32)
+        // --- Físicas (hacer coincidir radios) ---
+        const groundShape = new CANNON.Cylinder(groundRadius, groundRadius, 1, 32)
         this.groundBody = new CANNON.Body({ mass: 0, material: this.defaultMaterial })
         this.groundBody.addShape(groundShape)
-        this.groundBody.position.set(0, -0.5, 0)
+        this.groundBody.position.set(0, -0.5, 0) // altura = 1 → superficie en y=0
         this.world.addBody(this.groundBody)
 
-        const islandShape = new CANNON.Cylinder(20, 20, 1, 32)
+        const islandShape = new CANNON.Cylinder(islandRadius, islandRadius, 1, 32)
         this.islandBody = new CANNON.Body({ mass: 0, material: this.defaultMaterial })
         this.islandBody.addShape(islandShape)
         this.islandBody.position.set(0, -0.5, -80)
@@ -223,7 +289,7 @@ export default class GameEngine {
         const carWidth = 2;    // ancho del auto
         const carHeight = 0.5; // altura del chasis
         const carLength = 3;   // largo del auto
-        const mass = 250;
+        const mass = 1000;
 
         // -------------------
         // Chasis visual
@@ -399,15 +465,20 @@ export default class GameEngine {
         mesh.castShadow = true;
         this.scene.add(mesh);
 
-        // Aproximación física: usar un cilindro con radio base y altura
-        const shape = new CANNON.Cylinder(0, radius, height, 12);
+        // Física con radio mínimo para SAPBroadphase
+        const minRadius = 0.05;
+        const shape = new CANNON.Cylinder(minRadius, radius, height, 12);
         const body = new CANNON.Body({ mass: 1, material: this.defaultMaterial });
         body.addShape(shape);
-        body.position.set(x, y, z);
-        this.world.addBody(body);
+        body.position.set(x, y + height / 2, z); // ajustar altura inicial
+        body.allowSleep = true;                  // opcional para estabilidad
+        body.sleepSpeedLimit = 0.01;
+        body.sleepTimeLimit = 1;
 
+        this.world.addBody(body);
         this.boxes.push({ mesh, body });
     }
+
 
     // Ajustar cajas y botellas para aceptar tamaño reducido
     createBox(x, y, z, size = 1) {
@@ -514,7 +585,7 @@ export default class GameEngine {
 
     updateCar(deltaTime) {
         const maxSteerVal = 0.5;
-        const maxForce = 1000;
+        const maxForce = 5000;
         const brakeForce = 5;
 
         // Girar ruedas delanteras

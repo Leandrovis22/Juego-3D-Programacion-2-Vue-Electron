@@ -17,11 +17,11 @@
   },
   "dependencies": {
     "cannon-es": "^0.20.0",
-    "electron": "^37.4.0",
     "three": "^0.179.1",
     "vue": "^3.5.18"
   },
   "devDependencies": {
+    "electron": "^37.4.0",
     "@eslint/js": "^9.31.0",
     "@vitejs/plugin-vue": "^6.0.1",
     "@vue/eslint-config-prettier": "^10.2.0",
@@ -35,5 +35,29 @@
     "vite": "^7.0.6",
     "vite-plugin-vue-devtools": "^8.0.0",
     "wait-on": "^8.0.4"
+  },
+  "build": {
+    "appId": "com.tuusuario.physics-game-3d",
+    "productName": "Physics Game 3D",
+    "directories": {
+      "output": "dist_electron"
+    },
+    "files": [
+      "dist/**",
+      "electron/**",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowElevation": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
   }
 }
