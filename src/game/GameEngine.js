@@ -196,93 +196,99 @@ export default class GameEngine {
     }
 
     initGround() {
-        // --- Visual ---
-        const groundRadius = 30
-        const groundGeometry = new THREE.CircleGeometry(groundRadius, 64)
-        const groundMaterial = new THREE.MeshLambertMaterial({ color: 0x55aa55 })
-        this.ground = new THREE.Mesh(groundGeometry, groundMaterial)
-        this.ground.rotation.x = -Math.PI / 2
-        this.ground.position.set(0, 0, 0)
-        this.ground.receiveShadow = true
-        this.scene.add(this.ground)
-
-        // Isla secundaria (igual ya la tienes coherente con 20)
         const islandRadius = 20
-        const islandGeometry = new THREE.CircleGeometry(islandRadius, 64)
-        const islandMaterial = new THREE.MeshLambertMaterial({ color: 0x559955 })
-        this.island = new THREE.Mesh(islandGeometry, islandMaterial)
-        this.island.rotation.x = -Math.PI / 2
-        this.island.position.set(0, 0, -80)
-        this.island.receiveShadow = true
-        this.scene.add(this.island)
+        const positions = [
+            { x: 0, z: 0, color: 0x55aa55, name: 'central' },     // isla central
+            { x: 0, z: -65, color: 0x559955, name: 'norte' },     // isla norte
+            { x: 65, z: -65, color: 0x558855, name: 'este' },     // mover isla este hacia norte
+            { x: -65, z: -65, color: 0x557755, name: 'oeste' },   // mover isla oeste hacia norte
+            { x: 0, z: 65, color: 0x556655, name: 'sur' }         // isla sur
+        ]
 
-        // --- Físicas (hacer coincidir radios) ---
-        const groundShape = new CANNON.Cylinder(groundRadius, groundRadius, 1, 32)
-        this.groundBody = new CANNON.Body({ mass: 0, material: this.defaultMaterial })
-        this.groundBody.addShape(groundShape)
-        this.groundBody.position.set(0, -0.5, 0) // altura = 1 → superficie en y=0
-        this.world.addBody(this.groundBody)
+        this.islands = []
 
-        const islandShape = new CANNON.Cylinder(islandRadius, islandRadius, 1, 32)
-        this.islandBody = new CANNON.Body({ mass: 0, material: this.defaultMaterial })
-        this.islandBody.addShape(islandShape)
-        this.islandBody.position.set(0, -0.5, -80)
-        this.world.addBody(this.islandBody)
+        positions.forEach((pos) => {
+            // Visual
+            const geometry = new THREE.CircleGeometry(islandRadius, 64)
+            const material = new THREE.MeshLambertMaterial({ color: pos.color })
+            const mesh = new THREE.Mesh(geometry, material)
+            mesh.rotation.x = -Math.PI / 2
+            mesh.position.set(pos.x, 0, pos.z)
+            mesh.receiveShadow = true
+            this.scene.add(mesh)
 
-        // 🌉 Puente doble (dos tablones en paralelo)
-        this.bridgePlanks = []
-        const numPlanks = 2          // cantidad de secciones
-        const plankWidth = 1
-        const plankLength = 20
-        const separation = 1         // separación lateral entre los dos planos
+            // Física
+            const shape = new CANNON.Cylinder(islandRadius, islandRadius, 1, 32)
+            const body = new CANNON.Body({ mass: 0, material: this.defaultMaterial })
+            body.addShape(shape)
+            body.position.set(pos.x, -0.5, pos.z)
+            this.world.addBody(body)
 
-        // 👉 posición base del puente
-        const bridgeBaseX = 0
-        const bridgeBaseY = 0.2
-        const bridgeBaseZ = -37      // solo cambias esto y mueves todo el puente
+            this.islands.push({ mesh, body, name: pos.name })
+        })
 
-        for (let i = 0; i < numPlanks; i++) {
-            const z = bridgeBaseZ - i * plankLength
+        // Crear puentes conectando la isla norte con este y oeste
+        this.createBridge({ x: 23, z: -60 }, { x: 51, z: -60 })   // puente norte-este
+        this.createBridge({ x: -23, z: -60 }, { x: -51, z: -60 })  // puente norte-oeste
 
-            // 🔹 Pasarela izquierda
-            const geometryL = new THREE.BoxGeometry(plankWidth, 0.2, plankLength)
-            const materialL = new THREE.MeshLambertMaterial({ color: 0x8B4513 })
-            const meshL = new THREE.Mesh(geometryL, materialL)
-            meshL.castShadow = true
-            meshL.receiveShadow = true
-            meshL.position.set(bridgeBaseX - separation, bridgeBaseY, z)
-            this.scene.add(meshL)
+        // Mantener puentes de central a norte y sur
+        this.createBridge({ x: 0, z: -24 }, { x: 0, z: -49 }) // norte-central
+        this.createBridge({ x: 0, z: 24 }, { x: 0, z: 49 })   // sur-central
 
-            const shapeL = new CANNON.Box(new CANNON.Vec3(plankWidth / 2, 0.1, plankLength / 2))
-            const bodyL = new CANNON.Body({ mass: 0, material: this.defaultMaterial })
-            bodyL.addShape(shapeL)
-            bodyL.position.set(bridgeBaseX - separation, bridgeBaseY, z)
-            this.world.addBody(bodyL)
-
-            this.bridgePlanks.push({ mesh: meshL, body: bodyL })
-
-            // 🔹 Pasarela derecha
-            const geometryR = new THREE.BoxGeometry(plankWidth, 0.2, plankLength)
-            const materialR = new THREE.MeshLambertMaterial({ color: 0x8B4513 })
-            const meshR = new THREE.Mesh(geometryR, materialR)
-            meshR.castShadow = true
-            meshR.receiveShadow = true
-            meshR.position.set(bridgeBaseX + separation, bridgeBaseY, z)
-            this.scene.add(meshR)
-
-            const shapeR = new CANNON.Box(new CANNON.Vec3(plankWidth / 2, 0.1, plankLength / 2))
-            const bodyR = new CANNON.Body({ mass: 0, material: this.defaultMaterial })
-            bodyR.addShape(shapeR)
-            bodyR.position.set(bridgeBaseX + separation, bridgeBaseY, z)
-            this.world.addBody(bodyR)
-
-            this.bridgePlanks.push({ mesh: meshR, body: bodyR })
-        }
-
-
-
-        console.log("Isla principal, isla secundaria y puente creados")
+        console.log("✅ Islas este y oeste ahora conectadas a norte")
     }
+
+    createBridge(start, end) {
+        const plankLength = 10   // largo de cada tablón
+        const plankWidth = 1     // ancho del tablón
+        const separation = 1     // separación lateral entre los dos puentes
+        const height = 0.2       // altura del puente
+
+        const dx = end.x - start.x
+        const dz = end.z - start.z
+        const distance = Math.sqrt(dx * dx + dz * dz)
+        const steps = Math.ceil(distance / plankLength)
+
+        // Ángulo de dirección del puente
+        const angle = Math.atan2(dz, dx)
+
+        // Vector perpendicular para separar las dos pasarelas
+        const offsetX = Math.sin(angle) * separation
+        const offsetZ = -Math.cos(angle) * separation
+
+        for (let i = 0; i < steps; i++) {
+            const t = i / steps
+            const x = start.x + dx * t
+            const z = start.z + dz * t
+            const y = height
+
+                // 🔹 Crear las dos pasarelas (izquierda y derecha)
+                ;[-1, 1].forEach(side => {
+                    const px = x + offsetX * side
+                    const pz = z + offsetZ * side
+
+                    // Visual
+                    const geometry = new THREE.BoxGeometry(plankLength, 0.2, plankWidth)
+                    const material = new THREE.MeshLambertMaterial({ color: 0x8B4513 })
+                    const mesh = new THREE.Mesh(geometry, material)
+                    mesh.castShadow = true
+                    mesh.receiveShadow = true
+                    mesh.position.set(px, y, pz)
+                    mesh.rotation.y = -angle
+                    this.scene.add(mesh)
+
+                    // Física
+                    const shape = new CANNON.Box(new CANNON.Vec3(plankLength / 2, 0.1, plankWidth / 2))
+                    const body = new CANNON.Body({ mass: 0, material: this.defaultMaterial })
+                    body.addShape(shape)
+                    body.position.set(px, y, pz)
+                    body.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), -angle)
+                    this.world.addBody(body)
+                })
+        }
+    }
+
+
 
 
     initCar() {
@@ -394,47 +400,87 @@ export default class GameEngine {
 
 
     initTestObjects() {
-        // Apilado de cajas
-        for (let i = 0; i < 5; i++) {         // número de columnas
-            for (let j = 0; j < 5; j++) {     // altura de cada columna
-                const x = 5 + i * 2;          // separar columnas
-                const y = j + 0.25;    // mitad de tamaño (size/2) + offset
-                const z = -3;
-                this.createBox(x, y, z); // tamaño reducido
+        // --- Isla central: torres de cajas ---
+        // --- Isla central: 4 grupos en las esquinas ---
+        const central = this.islands.find(i => i.name === 'central');
+        const towerHeight = 5;
+        const towersPerGroup = 3;
+        const boxSize = 1;
+        const towerSpacing = 1; // separación entre torres dentro del grupo
+        const groupOffset = 7;  // distancia del centro de la isla a cada grupo
+
+        // Definir las 4 esquinas relativas al centro
+        const corners = [
+            { x: -groupOffset, z: -groupOffset },
+            { x: groupOffset, z: -groupOffset },
+            { x: -groupOffset, z: groupOffset },
+            { x: groupOffset, z: groupOffset },
+        ];
+
+        corners.forEach(corner => {
+            for (let t = 0; t < towersPerGroup; t++) {
+                const offsetX = t * towerSpacing;
+                const offsetZ = 0; // torres alineadas en fila
+                for (let k = 0; k < towerHeight; k++) {
+                    const y = 0.5 + k * boxSize; // altura de cada caja
+                    this.createBox(
+                        central.mesh.position.x + corner.x + offsetX,
+                        y,
+                        central.mesh.position.z + corner.z + offsetZ
+                    );
+                }
+            }
+        });
+
+
+        // --- Isla norte: botellas apiladas ---
+        const norte = this.islands.find(i => i.name === 'norte');
+        const bottleCols = 6;
+        const bottleRows = 3;
+        for (let i = 0; i < bottleCols; i++) {
+            for (let j = 0; j < bottleRows; j++) {
+                const offsetX = -3 + i * 1.2;
+                const offsetZ = -2;
+                const offsetY = 1 + j * 2; // altura de cada botella
+                this.createBottle(norte.mesh.position.x + offsetX, offsetY, norte.mesh.position.z + offsetZ);
             }
         }
 
-        // Apilado de botellas
-        const bottleHeight = 2;  // la altura visual física original
-        const scale = 1;       // mitad de tamaño
-        const totalHeight = bottleHeight * scale;
-
-        for (let i = 0; i < 5; i++) {
-            for (let j = 0; j < 3; j++) {
-                const x = -5 - i * 2;
-                const y = totalHeight / 2 + j * totalHeight; // colocar desde la mitad
-                const z = -5;
-                this.createBottle(x, y, z, scale);
-            }
+        // --- Isla este: esferas ---
+        const este = this.islands.find(i => i.name === 'este');
+        const sphereCount = 4;
+        for (let i = 0; i < sphereCount; i++) {
+            const offsetX = 0;
+            const offsetZ = -8 + i * 4;
+            const offsetY = 2;
+            this.createSphere(este.mesh.position.x + offsetX, offsetY, este.mesh.position.z + offsetZ, 2);
         }
 
-
-        // Esferas
-        for (let i = 0; i < 3; i++) {
-            const x = 5 + i * 2;
-            const y = 1;
-            const z = -15;
-            this.createSphere(x, y, z);  // esfera de radio reducido
+        // --- Isla oeste: conos ---
+        const oeste = this.islands.find(i => i.name === 'oeste');
+        const coneCount = 6;
+        for (let i = 0; i < coneCount; i++) {
+            const offsetX = 0;
+            const offsetZ = -5 + i * 2;
+            const offsetY = 1.5;
+            this.createCone(oeste.mesh.position.x + offsetX, offsetY, oeste.mesh.position.z + offsetZ, 1, 3);
         }
 
-        // Conos
+        // --- Isla sur: mezcla de cajas y botellas ---
+        const sur = this.islands.find(i => i.name === 'sur');
         for (let i = 0; i < 3; i++) {
-            const x = -10 + i * 2;
-            const y = 1.5;
-            const z = -15;
-            this.createCone(x, y, z, 1, 3); // radio y altura reducidos
+            // Cajas
+            const boxOffsetX = -2 + i * 2;
+            const boxOffsetY = 1;
+            this.createBox(sur.mesh.position.x + boxOffsetX, boxOffsetY, sur.mesh.position.z);
+            // Botellas
+            const bottleOffsetX = 2 + i * 2;
+            const bottleOffsetY = 1;
+            this.createBottle(sur.mesh.position.x + bottleOffsetX, bottleOffsetY, sur.mesh.position.z);
         }
     }
+
+
 
     // Crear esfera
     createSphere(x, y, z, radius = 1) {
