@@ -17,10 +17,10 @@ const CONFIG = {
     RENDERING: {
         PIXEL_RATIO_LIMIT: 2,
         CAMERA_NEAR: 0.5,
-        CAMERA_FAR: 100,
+        CAMERA_FAR: 500,  // Aumentado de 100 a 500
         SHADOW_MAP_SIZE: 2048,
-        FOG_NEAR: 50,
-        FOG_FAR: 200
+        FOG_NEAR: 150,    // Aumentado de 50 a 150
+        FOG_FAR: 400      // Aumentado de 200 a 400
     },
     WORLD: {
         ISLAND_RADIUS: 20,
@@ -42,7 +42,9 @@ const CONFIG = {
     CAMERA: {
         FOLLOW_SPEED: 0.08,
         DYNAMIC_OFFSET_MULT: 0.1,
-        MAX_DYNAMIC_OFFSET: 15
+        MAX_DYNAMIC_OFFSET: 25,    // Aumentado de 15 a 25
+        BASE_HEIGHT: 5,            // Nueva: altura base de cámara
+        BASE_DISTANCE: 12          // Nueva: distancia base de cámara
     },
     INSTANCES: {
         TOWER_HEIGHT: 5,
@@ -491,7 +493,7 @@ export default class GameEngine {
         // Game objects
         this.car = null
         this.islands = []
-        this.cameraOffset = new THREE.Vector3(0, 5, 10)
+        this.cameraOffset = new THREE.Vector3(0, CONFIG.CAMERA.BASE_HEIGHT, CONFIG.CAMERA.BASE_DISTANCE)
 
         // Bind methods
         this.handleKeyDown = this.handleKeyDown.bind(this)
@@ -528,7 +530,7 @@ export default class GameEngine {
 
         // Camera
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, CONFIG.RENDERING.CAMERA_NEAR, CONFIG.RENDERING.CAMERA_FAR)
-        this.camera.position.set(0, 5, 10)
+        this.camera.position.set(0, CONFIG.CAMERA.BASE_HEIGHT, CONFIG.CAMERA.BASE_DISTANCE)
         this.camera.lookAt(0, 0, 0)
 
         // Renderer
@@ -573,11 +575,11 @@ export default class GameEngine {
         directionalLight.shadow.mapSize.width = CONFIG.RENDERING.SHADOW_MAP_SIZE
         directionalLight.shadow.mapSize.height = CONFIG.RENDERING.SHADOW_MAP_SIZE
         directionalLight.shadow.camera.near = 0.5
-        directionalLight.shadow.camera.far = 50
-        directionalLight.shadow.camera.left = -20
-        directionalLight.shadow.camera.right = 20
-        directionalLight.shadow.camera.top = 20
-        directionalLight.shadow.camera.bottom = -20
+        directionalLight.shadow.camera.far = 100  // Aumentado de 50 a 100
+        directionalLight.shadow.camera.left = -50  // Aumentado de -20 a -50
+        directionalLight.shadow.camera.right = 50   // Aumentado de 20 a 50
+        directionalLight.shadow.camera.top = 50     // Aumentado de 20 a 50
+        directionalLight.shadow.camera.bottom = -50 // Aumentado de -20 a -50
         this.scene.add(directionalLight)
     }
 
