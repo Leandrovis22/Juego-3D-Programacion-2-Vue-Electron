@@ -10,6 +10,7 @@
   "homepage": "https://Leandrovis22.github.io/Juego-3D-Programacion-2-Vue-Electron",
   "scripts": {
     "deploy": "gh-pages -d dist",
+    "deploy:manual": "npm run build:vue && npm run deploy",
     "electron": "cross-env NODE_ENV=development electron .",
     "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",
     "build": "npm run build:vue && npm run build:electron",
