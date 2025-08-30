@@ -15,7 +15,7 @@ const CONFIG = {
         SLEEP_TIME_LIMIT: 1
     },
     RENDERING: {
-        PIXEL_RATIO_LIMIT: 1,
+        PIXEL_RATIO_LIMIT: 2,
         CAMERA_NEAR: 0.5,
         CAMERA_FAR: 500,  // Aumentado de 100 a 500
         SHADOW_MAP_SIZE: 2048,
@@ -545,12 +545,10 @@ export default class GameEngine {
         })
         this.renderer.setSize(window.innerWidth, window.innerHeight)
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, CONFIG.RENDERING.PIXEL_RATIO_LIMIT))
-        if (!this.isMobile) {
-            this.renderer.shadowMap.enabled = true
-            this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
-        } else {
-            this.renderer.shadowMap.enabled = false
-        }
+
+        this.renderer.shadowMap.enabled = true
+        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
+
     }
 
     initPhysics() {
