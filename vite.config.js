@@ -3,7 +3,7 @@ import vue from '@vitejs/plugin-vue'
 import path from 'path'
 
 export default defineConfig(({ mode }) => ({
-  base: mode === 'production' ? './' : '/',
+  base: mode === 'production' ? '/Juego-3D-Programacion-2-Vue-Electron/' : '/',
   plugins: [vue()],
   resolve: {
     alias: {

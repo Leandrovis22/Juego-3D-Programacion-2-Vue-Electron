@@ -26,12 +26,28 @@ export default class GameEngine {
         this.boxes = []
         this.bottles = []
 
+        this.instancedBoxes = null
+        this.boxInstances = []
+        this.sharedMaterials = null
+
         // Bind methods to preserve 'this' context
         this.handleKeyDown = this.handleKeyDown.bind(this)
         this.handleKeyUp = this.handleKeyUp.bind(this)
         this.handleResize = this.handleResize.bind(this)
     }
 
+    initSharedMaterials() {
+        this.sharedMaterials = {
+            box: new THREE.MeshLambertMaterial({ color: 0xff6b6b }),
+            bottle: new THREE.MeshLambertMaterial({
+                color: 0x4169E1,
+                transparent: true,
+                opacity: 0.7
+            }),
+            sphere: new THREE.MeshLambertMaterial({ color: 0x4fc3f7 }),
+            cone: new THREE.MeshLambertMaterial({ color: 0xffa726 })
+        }
+    }
     init() {
         if (/Mobi|Android/i.test(navigator.userAgent)) {
             this.setupJoystick()
@@ -119,7 +135,6 @@ export default class GameEngine {
 
 
     initThreeJS() {
-        console.log('Canvas element:', this.canvas)
 
         // Scene
         this.scene = new THREE.Scene()
@@ -135,18 +150,21 @@ export default class GameEngine {
         // Renderer
         this.renderer = new THREE.WebGLRenderer({
             canvas: this.canvas,
-            antialias: true
+            antialias: false, // Desactivar antialiasing para mejor performance
+            powerPreference: "high-performance"
         })
 
-        console.log('WebGL Renderer created:', this.renderer)
-        console.log('WebGL Context:', this.renderer.getContext())
-
         this.renderer.setSize(window.innerWidth, window.innerHeight)
-        this.renderer.shadowMap.enabled = true
-        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
-        this.renderer.physicallyCorrectLights = true
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)) // Limitar pixel ratio
 
-        console.log('Renderer size set to:', window.innerWidth, 'x', window.innerHeight)
+        // OPTIMIZACIÓN 2: Configuración conservadora de sombras
+        this.renderer.shadowMap.enabled = true
+        this.renderer.shadowMap.type = THREE.BasicShadowMap // Más rápido que PCFSoftShadowMap
+
+        // OPTIMIZACIÓN 3: Frustum culling más agresivo
+        this.camera.near = 0.5
+        this.camera.far = 100 // Reducir de 1000 a 100
+
         console.log('Initial camera position:', this.camera.position)
     }
 
@@ -171,6 +189,10 @@ export default class GameEngine {
         this.defaultMaterial = new CANNON.Material('default')
         this.world.defaultContactMaterial.friction = 0.4
         this.world.defaultContactMaterial.restitution = 0.3
+
+        this.world.allowSleep = true
+        this.world.sleepSpeedLimit = 0.1
+        this.world.sleepTimeLimit = 1
 
         console.log('Physics world initialized - basic setup')
     }
@@ -400,87 +422,139 @@ export default class GameEngine {
 
 
     initTestObjects() {
-        // --- Isla central: torres de cajas ---
-        // --- Isla central: 4 grupos en las esquinas ---
-        const central = this.islands.find(i => i.name === 'central');
-        const towerHeight = 5;
-        const towersPerGroup = 3;
-        const boxSize = 1;
-        const towerSpacing = 1; // separación entre torres dentro del grupo
-        const groupOffset = 7;  // distancia del centro de la isla a cada grupo
+        // Inicializar materiales compartidos
+        this.initSharedMaterials()
 
-        // Definir las 4 esquinas relativas al centro
+        // --- OPTIMIZACIÓN 6: Instanced rendering para cajas ---
+        this.createInstancedBoxTowers()
+
+        // --- Resto de objetos (sin cambios) ---
+        const norte = this.islands.find(i => i.name === 'norte')
+        const bottleCols = 6
+        const bottleRows = 3
+        for (let i = 0; i < bottleCols; i++) {
+            for (let j = 0; j < bottleRows; j++) {
+                const offsetX = -3 + i * 1.2
+                const offsetZ = -2
+                const offsetY = 1 + j * 2
+                this.createBottle(norte.mesh.position.x + offsetX, offsetY, norte.mesh.position.z + offsetZ)
+            }
+        }
+
+        const este = this.islands.find(i => i.name === 'este')
+        const sphereCount = 4
+        for (let i = 0; i < sphereCount; i++) {
+            const offsetX = 0
+            const offsetZ = -8 + i * 4
+            const offsetY = 2
+            this.createSphere(este.mesh.position.x + offsetX, offsetY, este.mesh.position.z + offsetZ, 2)
+        }
+
+        const oeste = this.islands.find(i => i.name === 'oeste')
+        const coneCount = 6
+        for (let i = 0; i < coneCount; i++) {
+            const offsetX = 0
+            const offsetZ = -5 + i * 2
+            const offsetY = 1.5
+            this.createCone(oeste.mesh.position.x + offsetX, offsetY, oeste.mesh.position.z + offsetZ, 1, 3)
+        }
+
+        const sur = this.islands.find(i => i.name === 'sur')
+        for (let i = 0; i < 3; i++) {
+            const boxOffsetX = -2 + i * 2
+            const boxOffsetY = 1
+            this.createBox(sur.mesh.position.x + boxOffsetX, boxOffsetY, sur.mesh.position.z)
+
+            const bottleOffsetX = 2 + i * 2
+            const bottleOffsetY = 1
+            this.createBottle(sur.mesh.position.x + bottleOffsetX, bottleOffsetY, sur.mesh.position.z)
+        }
+    }
+
+    createInstancedBoxTowers() {
+        const central = this.islands.find(i => i.name === 'central')
+        const towerHeight = 5
+        const towersPerGroup = 3
+        const boxSize = 1
+        const towerSpacing = 1
+        const groupOffset = 7
+
         const corners = [
             { x: -groupOffset, z: -groupOffset },
             { x: groupOffset, z: -groupOffset },
             { x: -groupOffset, z: groupOffset },
-            { x: groupOffset, z: groupOffset },
-        ];
+            { x: groupOffset, z: groupOffset }
+        ]
+        const totalBoxes = corners.length * towersPerGroup * towerHeight
+
+        // Crear instanced mesh
+        const boxGeometry = new THREE.BoxGeometry(boxSize, boxSize, boxSize)
+        this.instancedBoxes = new THREE.InstancedMesh(
+            boxGeometry,
+            this.sharedMaterials.box,
+            totalBoxes
+        )
+        this.instancedBoxes.castShadow = true
+        this.instancedBoxes.receiveShadow = true
+        this.scene.add(this.instancedBoxes)
+
+        // Crear instancias y cuerpos físicos
+        const matrix = new THREE.Matrix4()
+        const position = new THREE.Vector3()
+        const quaternion = new THREE.Quaternion()
+        const scale = new THREE.Vector3(1, 1, 1)
+
+        let instanceIndex = 0
 
         corners.forEach(corner => {
             for (let t = 0; t < towersPerGroup; t++) {
-                const offsetX = t * towerSpacing;
-                const offsetZ = 0; // torres alineadas en fila
+                const offsetX = t * towerSpacing
+                const offsetZ = 0
+
                 for (let k = 0; k < towerHeight; k++) {
-                    const y = 0.5 + k * boxSize; // altura de cada caja
-                    this.createBox(
-                        central.mesh.position.x + corner.x + offsetX,
-                        y,
-                        central.mesh.position.z + corner.z + offsetZ
-                    );
+                    const x = central.mesh.position.x + corner.x + offsetX
+                    const y = 0.5 + k * boxSize
+                    const z = central.mesh.position.z + corner.z + offsetZ
+
+                    // Configurar matriz de transformación
+                    position.set(x, y, z)
+                    matrix.compose(position, quaternion, scale)
+                    this.instancedBoxes.setMatrixAt(instanceIndex, matrix)
+
+                    // Crear cuerpo físico
+                    const shape = new CANNON.Box(new CANNON.Vec3(boxSize / 2, boxSize / 2, boxSize / 2))
+                    const body = new CANNON.Body({
+                        mass: 1,
+                        material: this.defaultMaterial,
+                        allowSleep: true,
+                        sleepSpeedLimit: 0.1,
+                        sleepTimeLimit: 1
+                    })
+                    body.addShape(shape)
+                    body.position.set(x, y, z)
+                    this.world.addBody(body)
+
+                    // IMPORTANTE: Guardar posición y rotación inicial
+                    const initialPosition = new CANNON.Vec3(x, y, z)
+                    const initialQuaternion = new CANNON.Quaternion(0, 0, 0, 1)
+
+                    // Guardar referencia con datos iniciales
+                    this.boxInstances.push({
+                        body,
+                        instanceIndex,
+                        isActive: true,
+                        initialPosition: initialPosition.clone(),
+                        initialQuaternion: initialQuaternion.clone()
+                    })
+
+                    instanceIndex++
                 }
             }
-        });
+        })
 
-
-        // --- Isla norte: botellas apiladas ---
-        const norte = this.islands.find(i => i.name === 'norte');
-        const bottleCols = 6;
-        const bottleRows = 3;
-        for (let i = 0; i < bottleCols; i++) {
-            for (let j = 0; j < bottleRows; j++) {
-                const offsetX = -3 + i * 1.2;
-                const offsetZ = -2;
-                const offsetY = 1 + j * 2; // altura de cada botella
-                this.createBottle(norte.mesh.position.x + offsetX, offsetY, norte.mesh.position.z + offsetZ);
-            }
-        }
-
-        // --- Isla este: esferas ---
-        const este = this.islands.find(i => i.name === 'este');
-        const sphereCount = 4;
-        for (let i = 0; i < sphereCount; i++) {
-            const offsetX = 0;
-            const offsetZ = -8 + i * 4;
-            const offsetY = 2;
-            this.createSphere(este.mesh.position.x + offsetX, offsetY, este.mesh.position.z + offsetZ, 2);
-        }
-
-        // --- Isla oeste: conos ---
-        const oeste = this.islands.find(i => i.name === 'oeste');
-        const coneCount = 6;
-        for (let i = 0; i < coneCount; i++) {
-            const offsetX = 0;
-            const offsetZ = -5 + i * 2;
-            const offsetY = 1.5;
-            this.createCone(oeste.mesh.position.x + offsetX, offsetY, oeste.mesh.position.z + offsetZ, 1, 3);
-        }
-
-        // --- Isla sur: mezcla de cajas y botellas ---
-        const sur = this.islands.find(i => i.name === 'sur');
-        for (let i = 0; i < 3; i++) {
-            // Cajas
-            const boxOffsetX = -2 + i * 2;
-            const boxOffsetY = 1;
-            this.createBox(sur.mesh.position.x + boxOffsetX, boxOffsetY, sur.mesh.position.z);
-            // Botellas
-            const bottleOffsetX = 2 + i * 2;
-            const bottleOffsetY = 1;
-            this.createBottle(sur.mesh.position.x + bottleOffsetX, bottleOffsetY, sur.mesh.position.z);
-        }
+        this.instancedBoxes.instanceMatrix.needsUpdate = true
+        console.log(`✅ Created ${totalBoxes} instanced boxes with single draw call`)
     }
-
-
 
     // Crear esfera
     createSphere(x, y, z, radius = 1) {
@@ -528,45 +602,52 @@ export default class GameEngine {
 
     // Ajustar cajas y botellas para aceptar tamaño reducido
     createBox(x, y, z, size = 1) {
-        const geometry = new THREE.BoxGeometry(size, size, size);
-        const material = new THREE.MeshLambertMaterial({ color: Math.random() * 0xffffff });
-        const mesh = new THREE.Mesh(geometry, material);
-        mesh.position.set(x, y, z);
-        mesh.castShadow = true;
-        this.scene.add(mesh);
+        const geometry = new THREE.BoxGeometry(size, size, size)
+        const material = new THREE.MeshLambertMaterial({ color: Math.random() * 0xffffff })
+        const mesh = new THREE.Mesh(geometry, material)
+        mesh.position.set(x, y, z)
+        mesh.castShadow = true
+        this.scene.add(mesh)
 
-        const shape = new CANNON.Box(new CANNON.Vec3(size / 2, size / 2, size / 2));
-        const body = new CANNON.Body({ mass: 1, material: this.defaultMaterial });
-        body.addShape(shape);
-        body.position.set(x, y, z);
-        this.world.addBody(body);
+        const shape = new CANNON.Box(new CANNON.Vec3(size / 2, size / 2, size / 2))
+        const body = new CANNON.Body({ mass: 1, material: this.defaultMaterial })
+        body.addShape(shape)
+        body.position.set(x, y, z)
 
-        this.boxes.push({ mesh, body });
+        // NUEVO: Guardar posición inicial
+        body.initPosition = new CANNON.Vec3(x, y, z)
+
+        this.world.addBody(body)
+        this.boxes.push({ mesh, body })
     }
 
-    // Ajustar createBottle para tamaño reducido
     createBottle(x, y, z, scale = 1) {
-        const geometry = new THREE.CylinderGeometry(0.3 * scale, 0.5 * scale, 2 * scale, 8);
+        const geometry = new THREE.CylinderGeometry(0.3 * scale, 0.5 * scale, 2 * scale, 8)
         const material = new THREE.MeshLambertMaterial({
             color: 0x4169E1,
             transparent: true,
             opacity: 0.7
-        });
-        const mesh = new THREE.Mesh(geometry, material);
-        mesh.position.set(x, y, z);
-        mesh.castShadow = true;
-        this.scene.add(mesh);
+        })
+        const mesh = new THREE.Mesh(geometry, material)
+        mesh.position.set(x, y, z)
+        mesh.castShadow = true
+        this.scene.add(mesh)
 
-        const shape = new CANNON.Box(new CANNON.Vec3(0.5 * scale, 1 * scale, 0.5 * scale));
-        const body = new CANNON.Body({ mass: 2, material: this.defaultMaterial });
-        body.addShape(shape);
-        body.position.set(x, y, z);
-        this.world.addBody(body);
+        const shape = new CANNON.Box(new CANNON.Vec3(0.5 * scale, 1 * scale, 0.5 * scale))
+        const body = new CANNON.Body({ mass: 2, material: this.defaultMaterial })
+        body.addShape(shape)
+        body.position.set(x, y, z)
 
-        this.bottles.push({ mesh, body, tipped: false });
+        // NUEVO: Guardar posición inicial
+        body.initPosition = new CANNON.Vec3(x, y, z)
+
+        this.world.addBody(body)
+        this.bottles.push({ mesh, body, tipped: false })
     }
 
     resetGame() {
+        console.log('🔄 Resetting game...')
+
         // Reset auto
         if (this.car) {
             this.car.body.position.set(0, 1, 0)
@@ -575,21 +656,72 @@ export default class GameEngine {
             this.car.body.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), Math.PI)
         }
 
-        // Reset cajas
-        this.boxes.forEach(box => {
-            box.body.position.copy(box.body.initPosition || new CANNON.Vec3(box.mesh.position.x, box.mesh.position.y, box.mesh.position.z))
-            box.body.velocity.setZero()
-            box.body.angularVelocity.setZero()
-            box.body.quaternion.set(0, 0, 0, 1)
-        })
+        // NUEVO: Reset cajas instanciadas (torres)
+        if (this.boxInstances && this.boxInstances.length > 0) {
+            console.log(`🔄 Resetting ${this.boxInstances.length} instanced boxes...`)
+
+            const matrix = new THREE.Matrix4()
+            const position = new THREE.Vector3()
+            const quaternion = new THREE.Quaternion()
+            const scale = new THREE.Vector3(1, 1, 1)
+
+            this.boxInstances.forEach(boxInstance => {
+                const { body, instanceIndex, initialPosition, initialQuaternion } = boxInstance
+
+                // Reset física
+                body.position.copy(initialPosition)
+                body.quaternion.copy(initialQuaternion)
+                body.velocity.setZero()
+                body.angularVelocity.setZero()
+
+                // Despertar el cuerpo si estaba dormido
+                body.wakeUp()
+
+                // Reset visual (instanced mesh)
+                position.copy(initialPosition)
+                quaternion.copy(initialQuaternion)
+                matrix.compose(position, quaternion, scale)
+                this.instancedBoxes.setMatrixAt(instanceIndex, matrix)
+            })
+
+            // Marcar que la matriz necesita actualización
+            this.instancedBoxes.instanceMatrix.needsUpdate = true
+        }
+
+        // Reset cajas individuales (las que no son torres)
+        if (this.boxes && this.boxes.length > 0) {
+            console.log(`🔄 Resetting ${this.boxes.length} individual boxes...`)
+
+            this.boxes.forEach(box => {
+                // Si no tiene posición inicial guardada, usar la posición actual del mesh
+                const initialPos = box.body.initPosition || box.mesh.position
+
+                box.body.position.set(initialPos.x, initialPos.y, initialPos.z)
+                box.body.velocity.setZero()
+                box.body.angularVelocity.setZero()
+                box.body.quaternion.set(0, 0, 0, 1)
+                box.body.wakeUp()
+            })
+        }
 
         // Reset botellas
-        this.bottles.forEach(bottle => {
-            bottle.body.position.copy(bottle.body.initPosition || new CANNON.Vec3(bottle.mesh.position.x, bottle.mesh.position.y, bottle.mesh.position.z))
-            bottle.body.velocity.setZero()
-            bottle.body.angularVelocity.setZero()
-            bottle.body.quaternion.set(0, 0, 0, 1)
-        })
+        if (this.bottles && this.bottles.length > 0) {
+            console.log(`🔄 Resetting ${this.bottles.length} bottles...`)
+
+            this.bottles.forEach(bottle => {
+                // Si no tiene posición inicial guardada, usar la posición actual del mesh
+                const initialPos = bottle.body.initPosition || bottle.mesh.position
+
+                bottle.body.position.set(initialPos.x, initialPos.y, initialPos.z)
+                bottle.body.velocity.setZero()
+                bottle.body.angularVelocity.setZero()
+                bottle.body.quaternion.set(0, 0, 0, 1)
+                bottle.tipped = false
+                bottle.body.wakeUp()
+            })
+        }
+
+        console.log('✅ Game reset complete!')
     }
 
 
@@ -703,6 +835,7 @@ export default class GameEngine {
             this.car.mesh.position.copy(this.car.body.position)
             this.car.mesh.quaternion.copy(this.car.body.quaternion)
 
+            // Actualizar ruedas
             this.car.vehicle.wheelInfos.forEach((wheel, index) => {
                 this.car.vehicle.updateWheelTransform(index)
                 const t = wheel.worldTransform
@@ -720,16 +853,18 @@ export default class GameEngine {
 
                 wheelMesh.quaternion.copy(q)
             })
-
-
         }
 
-        // Actualizar cajas y botellas
+        // NUEVO: Actualizar cajas instanciadas (torres de la isla central)
+        this.updateInstancedBoxes()
+
+        // Actualizar cajas individuales (las de la isla sur y otras)
         this.boxes.forEach(box => {
             box.mesh.position.copy(box.body.position)
             box.mesh.quaternion.copy(box.body.quaternion)
         })
 
+        // Actualizar botellas
         this.bottles.forEach(bottle => {
             bottle.mesh.position.copy(bottle.body.position)
             bottle.mesh.quaternion.copy(bottle.body.quaternion)
@@ -742,6 +877,34 @@ export default class GameEngine {
         this.renderer.render(this.scene, this.camera)
     }
 
+    updateInstancedBoxes() {
+        if (!this.instancedBoxes || !this.boxInstances.length) return
+
+        const matrix = new THREE.Matrix4()
+        const position = new THREE.Vector3()
+        const quaternion = new THREE.Quaternion()
+        const scale = new THREE.Vector3(1, 1, 1)
+
+        let needsUpdate = false
+
+        this.boxInstances.forEach((boxInstance) => {
+            const body = boxInstance.body
+
+            // Solo actualizar si el cuerpo está activo (se movió)
+            if (!body.sleepState || body.sleepState === 0) {
+                position.copy(body.position)
+                quaternion.copy(body.quaternion)
+
+                matrix.compose(position, quaternion, scale)
+                this.instancedBoxes.setMatrixAt(boxInstance.instanceIndex, matrix)
+                needsUpdate = true
+            }
+        })
+
+        if (needsUpdate) {
+            this.instancedBoxes.instanceMatrix.needsUpdate = true
+        }
+    }
 
     start() {
         console.log('Starting game engine...')
@@ -755,11 +918,25 @@ export default class GameEngine {
             cancelAnimationFrame(this.animationId)
         }
 
+        // Limpiar instanced mesh
+        if (this.instancedBoxes) {
+            this.instancedBoxes.geometry.dispose()
+            if (this.instancedBoxes.material.dispose) {
+                this.instancedBoxes.material.dispose()
+            }
+        }
+
+        // Limpiar materiales compartidos
+        if (this.sharedMaterials) {
+            Object.values(this.sharedMaterials).forEach(material => {
+                if (material.dispose) material.dispose()
+            })
+        }
+
         if (this.renderer) {
             this.renderer.dispose()
         }
 
-        // Cleanup event listeners
         window.removeEventListener('keydown', this.handleKeyDown)
         window.removeEventListener('keyup', this.handleKeyUp)
         window.removeEventListener('resize', this.handleResize)
