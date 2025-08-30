@@ -545,8 +545,12 @@ export default class GameEngine {
         })
         this.renderer.setSize(window.innerWidth, window.innerHeight)
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, CONFIG.RENDERING.PIXEL_RATIO_LIMIT))
-        this.renderer.shadowMap.enabled = true
-        this.renderer.shadowMap.type = THREE.BasicShadowMap
+        if (!this.isMobile) {
+            this.renderer.shadowMap.enabled = true
+            this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
+        } else {
+            this.renderer.shadowMap.enabled = false
+        }
     }
 
     initPhysics() {
