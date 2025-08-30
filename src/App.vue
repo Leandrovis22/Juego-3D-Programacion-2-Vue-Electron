@@ -98,7 +98,7 @@ export default {
 #joystick-container {
   position: absolute;
   bottom: 30px;
-  right: 30px;
+  left: 30px;
   width: 120px;
   height: 120px;
   background: rgba(0, 0, 0, 0.2);
