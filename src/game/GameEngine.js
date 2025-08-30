@@ -15,7 +15,7 @@ const CONFIG = {
         SLEEP_TIME_LIMIT: 1
     },
     RENDERING: {
-        PIXEL_RATIO_LIMIT: 2,
+        PIXEL_RATIO_LIMIT: 1,
         CAMERA_NEAR: 0.5,
         CAMERA_FAR: 500,  // Aumentado de 100 a 500
         SHADOW_MAP_SIZE: 2048,
@@ -467,6 +467,10 @@ class GameObjectManager {
 
 export default class GameEngine {
     constructor(canvas) {
+
+        this.lastFpsUpdate = performance.now()
+        this.frameCount = 0
+
         this.canvas = canvas
         this.scene = null
         this.camera = null
@@ -1063,6 +1067,9 @@ export default class GameEngine {
         const deltaTime = this.clock.getDelta()
         const clampedDeltaTime = Math.min(deltaTime, 1.0 / 30.0)
 
+        // 🔹 Medición: empezar
+        const frameStart = performance.now()
+
         // Update physics
         this.world.step(this.world.fixedTimeStep, clampedDeltaTime, this.world.maxSubSteps)
 
@@ -1071,19 +1078,29 @@ export default class GameEngine {
         this.updateCarVisuals()
 
         // Update objects
-        if (this.instancedObjectManager) {
-            this.instancedObjectManager.update()
-        }
-        if (this.gameObjectManager) {
-            this.gameObjectManager.update()
-        }
+        if (this.instancedObjectManager) this.instancedObjectManager.update()
+        if (this.gameObjectManager) this.gameObjectManager.update()
 
         // Update camera
         this.updateCamera()
 
         // Render
         this.renderer.render(this.scene, this.camera)
+
+        // 🔹 Medición: fin
+        const frameEnd = performance.now()
+        const frameTime = frameEnd - frameStart
+
+        this.frameCount++
+        const now = performance.now()
+        if (now - this.lastFpsUpdate >= 5000) {
+            const fps = (this.frameCount * 1000) / (now - this.lastFpsUpdate)
+            console.log(`⏱ Frame: ${frameTime.toFixed(2)} ms | FPS: ${fps.toFixed(1)}`)
+            this.frameCount = 0
+            this.lastFpsUpdate = now
+        }
     }
+
 
     start() {
         console.log('Starting optimized game engine...')
