@@ -14,11 +14,6 @@ export default class GameEngine {
         // Controls
         this.keys = { w: false, a: false, s: false, d: false }
 
-        // Game objects
-        this.car = null
-        this.box = null
-        this.sphere = null
-
         this.handleKeyDown = this.handleKeyDown.bind(this)
         this.handleKeyUp = this.handleKeyUp.bind(this)
         this.handleResize = this.handleResize.bind(this)
@@ -29,7 +24,6 @@ export default class GameEngine {
             this.setupJoystick()
         }
 
-        console.log('Initializing GameEngine...')
         this.initThreeJS()
         this.initPhysics()
         this.initLighting()
@@ -37,7 +31,6 @@ export default class GameEngine {
         this.initCar()
         this.initObjects()
         this.setupEventListeners()
-        console.log('GameEngine initialized successfully')
     }
 
     initThreeJS() {
@@ -74,23 +67,6 @@ export default class GameEngine {
         directionalLight.shadow.mapSize.width = 1024
         directionalLight.shadow.mapSize.height = 1024
         this.scene.add(directionalLight)
-    }
-
-    initWorld() {
-        // Main island
-        const geometry = new THREE.CircleGeometry(50, 32)
-        const material = new THREE.MeshLambertMaterial({ color: 0x55aa55 })
-        const mesh = new THREE.Mesh(geometry, material)
-        mesh.rotation.x = -Math.PI / 2
-        mesh.receiveShadow = true
-        this.scene.add(mesh)
-
-        // Physics ground
-        const shape = new CANNON.Cylinder(50, 20, 1, 32)
-        const body = new CANNON.Body({ mass: 0 })
-        body.addShape(shape)
-        body.position.set(0, -0.5, 0)
-        this.world.addBody(body)
     }
 
     initCar() {
@@ -179,38 +155,62 @@ export default class GameEngine {
         }
     }
 
-    initObjects() {
-        // Box at exact position
-        const boxGeom = new THREE.BoxGeometry(1, 1, 1)
-        const boxMat = new THREE.MeshLambertMaterial({ color: 0xff6b6b })
-        const boxMesh = new THREE.Mesh(boxGeom, boxMat)
-        boxMesh.position.set(5, 1, 0)
-        boxMesh.castShadow = true
-        this.scene.add(boxMesh)
+    updateCar() {
+        if (!this.car) return
 
-        const boxShape = new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.5))
-        const boxBody = new CANNON.Body({ mass: 1 })
-        boxBody.addShape(boxShape)
-        boxBody.position.set(5, 1, 0)
-        this.world.addBody(boxBody)
+        let steer = 0
+        if (this.keys.a) steer = 0.9
+        if (this.keys.d) steer = -0.9
 
-        this.box = { mesh: boxMesh, body: boxBody }
+        this.car.vehicle.setSteeringValue(steer, 0)
+        this.car.vehicle.setSteeringValue(steer, 1)
 
-        // Sphere at exact position
-        const sphereGeom = new THREE.SphereGeometry(1, 16, 16)
-        const sphereMat = new THREE.MeshLambertMaterial({ color: 0x4fc3f7 })
-        const sphereMesh = new THREE.Mesh(sphereGeom, sphereMat)
-        sphereMesh.position.set(-5, 1, 0)
-        sphereMesh.castShadow = true
-        this.scene.add(sphereMesh)
+        let engineForce = 0
+        if (this.keys.w) engineForce = -5000
+        if (this.keys.s) engineForce = 5000
 
-        const sphereShape = new CANNON.Sphere(1)
-        const sphereBody = new CANNON.Body({ mass: 1 })
-        sphereBody.addShape(sphereShape)
-        sphereBody.position.set(-5, 1, 0)
-        this.world.addBody(sphereBody)
+        this.car.vehicle.applyEngineForce(engineForce, 2)
+        this.car.vehicle.applyEngineForce(engineForce, 3)
 
-        this.sphere = { mesh: sphereMesh, body: sphereBody }
+        if (!this.keys.w && !this.keys.s) {
+            this.car.vehicle.setBrake(5, 2)
+            this.car.vehicle.setBrake(5, 3)
+        } else {
+            this.car.vehicle.setBrake(0, 2)
+            this.car.vehicle.setBrake(0, 3)
+        }
+
+        // Update chassis visual
+        this.car.mesh.position.copy(this.car.body.position)
+        this.car.mesh.quaternion.copy(this.car.body.quaternion)
+
+        // Update wheels visual
+        this.car.vehicle.wheelInfos.forEach((wheel, index) => {
+            this.car.vehicle.updateWheelTransform(index)
+            const t = wheel.worldTransform
+            const wheelMesh = this.car.wheels[index]
+
+            wheelMesh.position.copy(t.position)
+            wheelMesh.quaternion.set(t.quaternion.x, t.quaternion.y, t.quaternion.z, t.quaternion.w)
+
+            const correction = new THREE.Quaternion()
+            correction.setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 2)
+            wheelMesh.quaternion.multiply(correction)
+        })
+    }
+
+    updateCamera() {
+        if (!this.car) return
+
+        const carPos = this.car.mesh.position
+        const speed = this.car.body.velocity.length()
+
+        // Dynamic offset based on speed
+        const dynamicOffset = Math.min(speed * 0.1, 25)
+        const targetPos = new THREE.Vector3(carPos.x, carPos.y + 8, carPos.z + 15 + dynamicOffset)
+
+        this.camera.position.lerp(targetPos, 0.08)
+        this.camera.lookAt(carPos)
     }
 
     setupJoystick() {
@@ -295,48 +295,55 @@ export default class GameEngine {
         this.renderer.setSize(window.innerWidth, window.innerHeight)
     }
 
-    updateCar() {
-        if (!this.car) return
+    initWorld() {
+        // Main island
+        const geometry = new THREE.CircleGeometry(50, 32)
+        const material = new THREE.MeshLambertMaterial({ color: 0x55aa55 })
+        const mesh = new THREE.Mesh(geometry, material)
+        mesh.rotation.x = -Math.PI / 2
+        mesh.receiveShadow = true
+        this.scene.add(mesh)
 
-        let steer = 0
-        if (this.keys.a) steer = 0.9
-        if (this.keys.d) steer = -0.9
+        // Physics ground
+        const shape = new CANNON.Cylinder(50, 20, 1, 32)
+        const body = new CANNON.Body({ mass: 0 })
+        body.addShape(shape)
+        body.position.set(0, -0.5, 0)
+        this.world.addBody(body)
+    }
 
-        this.car.vehicle.setSteeringValue(steer, 0)
-        this.car.vehicle.setSteeringValue(steer, 1)
+    initObjects() {
+        // Box at exact position
+        const boxGeom = new THREE.BoxGeometry(1, 1, 1)
+        const boxMat = new THREE.MeshLambertMaterial({ color: 0xff6b6b })
+        const boxMesh = new THREE.Mesh(boxGeom, boxMat)
+        boxMesh.position.set(5, 1, 0)
+        boxMesh.castShadow = true
+        this.scene.add(boxMesh)
 
-        let engineForce = 0
-        if (this.keys.w) engineForce = -5000
-        if (this.keys.s) engineForce = 5000
+        const boxShape = new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.5))
+        const boxBody = new CANNON.Body({ mass: 1 })
+        boxBody.addShape(boxShape)
+        boxBody.position.set(5, 1, 0)
+        this.world.addBody(boxBody)
 
-        this.car.vehicle.applyEngineForce(engineForce, 2)
-        this.car.vehicle.applyEngineForce(engineForce, 3)
+        this.box = { mesh: boxMesh, body: boxBody }
 
-        if (!this.keys.w && !this.keys.s) {
-            this.car.vehicle.setBrake(5, 2)
-            this.car.vehicle.setBrake(5, 3)
-        } else {
-            this.car.vehicle.setBrake(0, 2)
-            this.car.vehicle.setBrake(0, 3)
-        }
+        // Sphere at exact position
+        const sphereGeom = new THREE.SphereGeometry(1, 16, 16)
+        const sphereMat = new THREE.MeshLambertMaterial({ color: 0x4fc3f7 })
+        const sphereMesh = new THREE.Mesh(sphereGeom, sphereMat)
+        sphereMesh.position.set(-5, 1, 0)
+        sphereMesh.castShadow = true
+        this.scene.add(sphereMesh)
 
-        // Update chassis visual
-        this.car.mesh.position.copy(this.car.body.position)
-        this.car.mesh.quaternion.copy(this.car.body.quaternion)
+        const sphereShape = new CANNON.Sphere(1)
+        const sphereBody = new CANNON.Body({ mass: 1 })
+        sphereBody.addShape(sphereShape)
+        sphereBody.position.set(-5, 1, 0)
+        this.world.addBody(sphereBody)
 
-        // Update wheels visual
-        this.car.vehicle.wheelInfos.forEach((wheel, index) => {
-            this.car.vehicle.updateWheelTransform(index)
-            const t = wheel.worldTransform
-            const wheelMesh = this.car.wheels[index]
-
-            wheelMesh.position.copy(t.position)
-            wheelMesh.quaternion.set(t.quaternion.x, t.quaternion.y, t.quaternion.z, t.quaternion.w)
-
-            const correction = new THREE.Quaternion()
-            correction.setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 2)
-            wheelMesh.quaternion.multiply(correction)
-        })
+        this.sphere = { mesh: sphereMesh, body: sphereBody }
     }
 
     updateObjects() {
@@ -348,20 +355,6 @@ export default class GameEngine {
             this.sphere.mesh.position.copy(this.sphere.body.position)
             this.sphere.mesh.quaternion.copy(this.sphere.body.quaternion)
         }
-    }
-
-    updateCamera() {
-        if (!this.car) return
-
-        const carPos = this.car.mesh.position
-        const speed = this.car.body.velocity.length()
-
-        // Dynamic offset based on speed
-        const dynamicOffset = Math.min(speed * 0.1, 25)
-        const targetPos = new THREE.Vector3(carPos.x, carPos.y + 8, carPos.z + 15 + dynamicOffset)
-
-        this.camera.position.lerp(targetPos, 0.08)
-        this.camera.lookAt(carPos)
     }
 
     resetGame() {
@@ -409,7 +402,6 @@ export default class GameEngine {
     }
 
     start() {
-        console.log('Starting game engine...')
         this.animate()
     }
 
