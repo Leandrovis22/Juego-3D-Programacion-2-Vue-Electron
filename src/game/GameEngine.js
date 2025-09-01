@@ -12,6 +12,7 @@ export default class GameEngine {
         this.worldManager = null
         this.clock = new THREE.Clock()
         this.animationId = null
+        this.smoothedTarget = new THREE.Vector3()
 
         // Controls
         this.keys = { w: false, a: false, s: false, d: false }
@@ -39,7 +40,7 @@ export default class GameEngine {
         this.scene.background = new THREE.Color(0x87CEEB)
 
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.5, 200)
-        this.camera.position.set(0, 8, 15)
+        this.camera.position.set(0, 5, 11)
 
         this.renderer = new THREE.WebGLRenderer({
             canvas: this.canvas,
@@ -212,13 +213,22 @@ export default class GameEngine {
         const carPos = this.car.mesh.position
         const speed = this.car.body.velocity.length()
 
-        // Dynamic offset based on speed
+        // Offset dinámico
         const dynamicOffset = Math.min(speed * 0.1, 25)
-        const targetPos = new THREE.Vector3(carPos.x, carPos.y + 8, carPos.z + 15 + dynamicOffset)
+        const targetPos = new THREE.Vector3(
+            carPos.x,
+            carPos.y + 5,
+            carPos.z + 11 + dynamicOffset
+        )
 
+        // Interpolación de la cámara
         this.camera.position.lerp(targetPos, 0.08)
-        this.camera.lookAt(carPos)
+
+        // Interpolación del punto de enfoque (suavizado también)
+        this.smoothedTarget.lerp(carPos, 0.1)
+        this.camera.lookAt(this.smoothedTarget)
     }
+
 
     setupJoystick() {
         const container = document.getElementById('joystick-container')

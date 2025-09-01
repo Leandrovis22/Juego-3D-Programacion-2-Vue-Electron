@@ -74,7 +74,6 @@ export default class WorldManager {
     }
 
     resetObjects() {
-        console.log('🔄 Resetting world objects...')
 
         // Reset box
         if (this.box) {
