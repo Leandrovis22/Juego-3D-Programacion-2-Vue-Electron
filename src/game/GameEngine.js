@@ -53,9 +53,9 @@ export default class GameEngine {
             powerPreference: "high-performance"
         })
         this.renderer.setSize(window.innerWidth, window.innerHeight)
-        this.renderer.setPixelRatio(2)
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
         this.renderer.shadowMap.enabled = true
-        this.renderer.shadowMap.type = THREE.BasicShadowMap
+        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
     }
 
     initPhysics() {
@@ -72,8 +72,8 @@ export default class GameEngine {
         const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8)
         directionalLight.position.set(10, 20, 10)
         directionalLight.castShadow = true
-        directionalLight.shadow.mapSize.width = 1024
-        directionalLight.shadow.mapSize.height = 1024
+        directionalLight.shadow.mapSize.width = 2048
+        directionalLight.shadow.mapSize.height = 2048
         directionalLight.shadow.camera.near = 0.5
         directionalLight.shadow.camera.far = 100  // Aumentado de 50 a 100
         directionalLight.shadow.camera.left = -50  // Aumentado de -20 a -50
@@ -225,21 +225,21 @@ export default class GameEngine {
         const carPos = this.car.mesh.position
         const speed = this.car.body.velocity.length()
 
-        // Offset dinámico
-        const dynamicOffset = Math.min(speed * 0.1, 25)
-        const targetPos = new THREE.Vector3(
-            carPos.x,
-            carPos.y + 5,
-            carPos.z + 11 + dynamicOffset
-        )
+        // Offset base (altura y distancia detrás del coche)
+        const cameraOffset = new THREE.Vector3(0, 5, 12)
 
-        // Interpolación de la cámara
+        // Offset dinámico según velocidad
+        const dynamicOffset = cameraOffset.clone()
+        dynamicOffset.z += Math.min(speed * 0.1, 25)
+
+        // Posición objetivo
+        const targetPos = carPos.clone().add(dynamicOffset)
+
+        // Interpolación suave
         this.camera.position.lerp(targetPos, 0.08)
-
-        // Interpolación del punto de enfoque (suavizado también)
-        this.smoothedTarget.lerp(carPos, 0.1)
-        this.camera.lookAt(this.smoothedTarget)
+        this.camera.lookAt(carPos)
     }
+
 
 
     setupJoystick() {
