@@ -4,6 +4,10 @@ import WorldManager from './WorldManager.js'
 
 export default class GameEngine {
     constructor(canvas) {
+
+        this.lastFpsUpdate = performance.now()
+        this.frameCount = 0
+
         this.canvas = canvas
         this.scene = null
         this.camera = null
@@ -38,18 +42,20 @@ export default class GameEngine {
     initThreeJS() {
         this.scene = new THREE.Scene()
         this.scene.background = new THREE.Color(0x87CEEB)
+        this.scene.fog = new THREE.Fog(0x87CEEB, 150, 400)
 
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.5, 200)
         this.camera.position.set(0, 5, 11)
 
         this.renderer = new THREE.WebGLRenderer({
             canvas: this.canvas,
-            antialias: false
+            antialias: false,
+            powerPreference: "high-performance"
         })
         this.renderer.setSize(window.innerWidth, window.innerHeight)
         this.renderer.setPixelRatio(2)
         this.renderer.shadowMap.enabled = true
-        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
+        this.renderer.shadowMap.type = THREE.BasicShadowMap
     }
 
     initPhysics() {
@@ -68,6 +74,12 @@ export default class GameEngine {
         directionalLight.castShadow = true
         directionalLight.shadow.mapSize.width = 1024
         directionalLight.shadow.mapSize.height = 1024
+        directionalLight.shadow.camera.near = 0.5
+        directionalLight.shadow.camera.far = 100  // Aumentado de 50 a 100
+        directionalLight.shadow.camera.left = -50  // Aumentado de -20 a -50
+        directionalLight.shadow.camera.right = 50   // Aumentado de 20 a 50
+        directionalLight.shadow.camera.top = 50     // Aumentado de 20 a 50
+        directionalLight.shadow.camera.bottom = -50
         this.scene.add(directionalLight)
     }
 
@@ -316,12 +328,26 @@ export default class GameEngine {
         this.animationId = requestAnimationFrame(() => this.animate())
 
         const deltaTime = Math.min(this.clock.getDelta(), 1 / 30)
+        const frameStart = performance.now()
 
         this.world.step(1 / 60, deltaTime, 3)
         this.updateCar()
         this.worldManager.updateObjects()
         this.updateCamera()
         this.renderer.render(this.scene, this.camera)
+
+        const frameEnd = performance.now()
+        const frameTime = frameEnd - frameStart
+
+        this.frameCount++
+        const now = performance.now()
+        if (now - this.lastFpsUpdate >= 5000) {
+            const fps = (this.frameCount * 1000) / (now - this.lastFpsUpdate)
+            console.log(`⏱ Frame: ${frameTime.toFixed(2)} ms | FPS: ${fps.toFixed(1)}`)
+            this.frameCount = 0
+            this.lastFpsUpdate = now
+        }
+
     }
 
     start() {
