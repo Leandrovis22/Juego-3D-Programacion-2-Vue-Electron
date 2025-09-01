@@ -76,10 +76,10 @@ export default class GameEngine {
         directionalLight.shadow.mapSize.height = 2048
         directionalLight.shadow.camera.near = 0.5
         directionalLight.shadow.camera.far = 100  // Aumentado de 50 a 100
-        directionalLight.shadow.camera.left = -50  // Aumentado de -20 a -50
-        directionalLight.shadow.camera.right = 50   // Aumentado de 20 a 50
-        directionalLight.shadow.camera.top = 50     // Aumentado de 20 a 50
-        directionalLight.shadow.camera.bottom = -50
+        directionalLight.shadow.camera.left = -70  // Aumentado de -20 a -50
+        directionalLight.shadow.camera.right = 70   // Aumentado de 20 a 50
+        directionalLight.shadow.camera.top = 70     // Aumentado de 20 a 50
+        directionalLight.shadow.camera.bottom = -70
         this.scene.add(directionalLight)
     }
 
@@ -130,7 +130,7 @@ export default class GameEngine {
             radius: 0.4,
             directionLocal: new CANNON.Vec3(0, -1, 0),
             axleLocal: new CANNON.Vec3(-1, 0, 0),
-            suspensionStiffness: 30,
+            suspensionStiffness: 28,
             suspensionRestLength: 0.3,
             frictionSlip: 5,
             dampingRelaxation: 2.3,

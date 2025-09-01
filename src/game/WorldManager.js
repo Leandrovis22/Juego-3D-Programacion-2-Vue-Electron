@@ -61,12 +61,25 @@ export default class WorldManager {
             rockMesh.castShadow = true
             rockMesh.receiveShadow = true
             this.scene.add(rockMesh)
+
+            // Physics body for rock
+            const rockShape = new CANNON.Sphere(size)
+            const rockBody = new CANNON.Body({ mass: 0 }) // mass: 0 = static
+            rockBody.addShape(rockShape)
+            rockBody.position.set(pos.x, size * 0.3, pos.z)
+            this.world.addBody(rockBody)
         })
+
     }
 
     initObjects() {
         // Clear existing objects
         this.clearAllObjects()
+
+        this.createBox({ x: -10, y: 3.5, z: -10 }, { width: 1, height: 1, depth: 1 }, this.materials.yellow)
+        this.createBox({ x: 10, y: 3.5, z: -10 }, { width: 1, height: 1, depth: 1 }, this.materials.orange)
+        this.createBox({ x: -10, y: 3.5, z: 10 }, { width: 1, height: 1, depth: 1 }, this.materials.blue)
+        this.createBox({ x: 10, y: 3.5, z: 10 }, { width: 1, height: 1, depth: 1 }, this.materials.red)
 
         // Create various individual objects
         this.createBoxTower({ x: 10, z: 0 }, 5)
@@ -354,43 +367,4 @@ export default class WorldManager {
         this.towers = []
     }
 
-    // Utility methods for interaction
-    applyForceToTower(towerIndex, force) {
-        if (this.towers[towerIndex]) {
-            this.towers[towerIndex].forEach(obj => {
-                obj.body.applyImpulse(new CANNON.Vec3(force.x, force.y, force.z))
-            })
-        }
-    }
-
-    toppleDominoes() {
-        const dominoTower = this.towers.find(tower =>
-            tower.length > 0 && tower[0].mesh.geometry.parameters.width < 0.5
-        )
-
-        if (dominoTower) {
-            dominoTower[0].body.applyImpulse(new CANNON.Vec3(5, 0, 0))
-        }
-    }
-
-    explodeObjects(center, radius = 10, force = 50) {
-        this.objects.forEach(obj => {
-            const distance = obj.body.position.distanceTo(new CANNON.Vec3(center.x, center.y, center.z))
-            if (distance < radius) {
-                const direction = new CANNON.Vec3()
-                obj.body.position.vsub(new CANNON.Vec3(center.x, center.y, center.z), direction)
-                direction.normalize()
-                direction.scale(force * (1 - distance / radius), direction)
-                obj.body.applyImpulse(direction)
-            }
-        })
-    }
-
-    getObjectCount() {
-        return {
-            total: this.objects.length,
-            stacked: this.stackedObjects.length,
-            towers: this.towers.length
-        }
-    }
 }
