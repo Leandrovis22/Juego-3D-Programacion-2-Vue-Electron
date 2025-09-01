@@ -252,6 +252,12 @@ export default class GameEngine {
         let startX, startY
         const maxDistance = 40
 
+        // Nuevas variables para control direccional
+        this.joystickInput = {
+            forward: 0,    // -1 a 1 (adelante/atrás relativo al auto)
+            turn: 0        // -1 a 1 (izquierda/derecha)
+        }
+
         const handleMove = (x, y) => {
             const dx = x - startX
             const dy = y - startY
@@ -263,14 +269,26 @@ export default class GameEngine {
 
             joystick.style.transform = `translate(calc(-50% + ${offsetX}px), calc(-50% + ${offsetY}px))`
 
-            // Reset keys
+            // Reset controles tradicionales
             this.keys.w = this.keys.a = this.keys.s = this.keys.d = false
 
             if (dist > 10) {
-                if (dy < -10) this.keys.w = true
-                if (dy > 10) this.keys.s = true
-                if (dx < -10) this.keys.a = true
-                if (dx > 10) this.keys.d = true
+                // Calcular input direccional normalizado
+                const normalizedX = dx / maxDistance  // -1 a 1 (izq/der)
+                const normalizedY = dy / maxDistance  // -1 a 1 (arriba/abajo en pantalla)
+
+                // Mapear a controles del auto
+                this.joystickInput.forward = -normalizedY  // Invertir Y (arriba = adelante)
+                this.joystickInput.turn = normalizedX      // X directo (der = derecha)
+
+                // Convertir a teclas para compatibilidad con updateCar()
+                if (this.joystickInput.forward > 0.3) this.keys.w = true
+                if (this.joystickInput.forward < -0.3) this.keys.s = true
+                if (this.joystickInput.turn < -0.3) this.keys.a = true
+                if (this.joystickInput.turn > 0.3) this.keys.d = true
+            } else {
+                this.joystickInput.forward = 0
+                this.joystickInput.turn = 0
             }
         }
 
@@ -279,18 +297,46 @@ export default class GameEngine {
             const touch = e.touches[0]
             startX = touch.clientX
             startY = touch.clientY
+            e.preventDefault() // Prevenir scroll
         })
 
         container.addEventListener('touchmove', e => {
             if (!dragging) return
+            e.preventDefault()
             const touch = e.touches[0]
             handleMove(touch.clientX, touch.clientY)
         })
 
-        container.addEventListener('touchend', () => {
+        container.addEventListener('touchend', e => {
             dragging = false
             joystick.style.transform = 'translate(-50%, -50%)'
             this.keys.w = this.keys.a = this.keys.s = this.keys.d = false
+            this.joystickInput.forward = 0
+            this.joystickInput.turn = 0
+            e.preventDefault()
+        })
+
+        // Soporte para mouse (testing en desktop)
+        container.addEventListener('mousedown', e => {
+            dragging = true
+            startX = e.clientX
+            startY = e.clientY
+            e.preventDefault()
+        })
+
+        container.addEventListener('mousemove', e => {
+            if (!dragging) return
+            e.preventDefault()
+            handleMove(e.clientX, e.clientY)
+        })
+
+        container.addEventListener('mouseup', e => {
+            dragging = false
+            joystick.style.transform = 'translate(-50%, -50%)'
+            this.keys.w = this.keys.a = this.keys.s = this.keys.d = false
+            this.joystickInput.forward = 0
+            this.joystickInput.turn = 0
+            e.preventDefault()
         })
     }
 
