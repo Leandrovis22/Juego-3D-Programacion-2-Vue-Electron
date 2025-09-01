@@ -295,6 +295,38 @@ export default class GameEngine {
         this.renderer.setSize(window.innerWidth, window.innerHeight)
     }
 
+    animate() {
+        this.animationId = requestAnimationFrame(() => this.animate())
+
+        const deltaTime = Math.min(this.clock.getDelta(), 1 / 30)
+
+        this.world.step(1 / 60, deltaTime, 3)
+        this.updateCar()
+        this.updateObjects()
+        this.updateCamera()
+        this.renderer.render(this.scene, this.camera)
+    }
+
+    start() {
+        this.animate()
+    }
+
+    destroy() {
+        if (this.animationId) {
+            cancelAnimationFrame(this.animationId)
+        }
+
+        window.removeEventListener('keydown', this.handleKeyDown)
+        window.removeEventListener('keyup', this.handleKeyUp)
+        window.removeEventListener('resize', this.handleResize)
+
+        if (this.renderer) {
+            this.renderer.dispose()
+        }
+
+        console.log('GameEngine destroyed')
+    }
+
     initWorld() {
         // Main island
         const geometry = new THREE.CircleGeometry(50, 32)
@@ -389,35 +421,4 @@ export default class GameEngine {
         console.log('✅ Game reset complete!')
     }
 
-    animate() {
-        this.animationId = requestAnimationFrame(() => this.animate())
-
-        const deltaTime = Math.min(this.clock.getDelta(), 1 / 30)
-
-        this.world.step(1 / 60, deltaTime, 3)
-        this.updateCar()
-        this.updateObjects()
-        this.updateCamera()
-        this.renderer.render(this.scene, this.camera)
-    }
-
-    start() {
-        this.animate()
-    }
-
-    destroy() {
-        if (this.animationId) {
-            cancelAnimationFrame(this.animationId)
-        }
-
-        window.removeEventListener('keydown', this.handleKeyDown)
-        window.removeEventListener('keyup', this.handleKeyUp)
-        window.removeEventListener('resize', this.handleResize)
-
-        if (this.renderer) {
-            this.renderer.dispose()
-        }
-
-        console.log('GameEngine destroyed')
-    }
 }
