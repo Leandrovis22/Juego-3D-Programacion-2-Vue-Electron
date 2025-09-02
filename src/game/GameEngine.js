@@ -179,6 +179,7 @@ export default class GameEngine {
         const roofGeometry = new THREE.BoxGeometry(1.6, 0.3, 1.8, bodySegments, bodySegments, bodySegments)
         const roofMesh = new THREE.Mesh(roofGeometry, bodyMaterial)
         roofMesh.position.y = 0.65
+        roofMesh.position.z = -0.3
         roofMesh.castShadow = true
         carMesh.add(roofMesh)
 
