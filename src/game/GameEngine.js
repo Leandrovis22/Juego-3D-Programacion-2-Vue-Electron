@@ -276,7 +276,7 @@ export default class GameEngine {
             const largeAngleThreshold = Math.PI / 2
 
             const currentSpeed = this.car.body.velocity.length()
-            const isStationary = currentSpeed < 0.5
+            const isStationary = currentSpeed < 0.8
 
             if (Math.abs(angle) > largeAngleThreshold) {
                 if (isStationary) {
@@ -284,7 +284,7 @@ export default class GameEngine {
                     this.car.body.angularVelocity.y = rotationForce * 0.02
 
                     // También dar un pequeño impulso hacia adelante
-                    engineForce = -1500
+                    engineForce = -2500
                     steer = 0 // No usar steering cuando rotamos directamente
                 } else {
                     steer = angle > 0 ? 0.9 : -0.9
@@ -294,7 +294,7 @@ export default class GameEngine {
                 // Ángulo mediano: girar fuerte y acelerar poco
                 const steerStrength = Math.min(Math.abs(angle) / Math.PI, 1) * 0.9
                 steer = angle > 0 ? steerStrength : -steerStrength
-                engineForce = -1500 // Acelerar suave
+                engineForce = -3500 // Acelerar suave
             } else {
                 const steerStrength = Math.min(Math.abs(angle) / angleThreshold, 1) * 0.4
                 steer = angle > 0 ? steerStrength : -steerStrength
