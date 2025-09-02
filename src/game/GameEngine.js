@@ -201,17 +201,37 @@ export default class GameEngine {
             const crossProduct = carForward.clone().cross(targetWorldDir)
             const angle = Math.atan2(crossProduct.y, dotProduct)
 
-            // Aplicar steering basado en el ángulo
-            const steerStrength = Math.min(Math.abs(angle) / Math.PI, 1) * 0.8
-            steer = angle > 0 ? steerStrength : -steerStrength
+            const angleThreshold = Math.PI / 6 // 30 grados
+            const largeAngleThreshold = Math.PI / 2 // 90 grados
 
-            // Siempre acelerar hacia adelante cuando el joystick está activo
-            engineForce = -3000
+            // Verificar si el auto está prácticamente detenido
+            const currentSpeed = this.car.body.velocity.length()
+            const isStationary = currentSpeed < 0.5
 
-            // Si el ángulo es muy grande (> 90°), retroceder y girar
-            if (Math.abs(angle) > Math.PI / 2) {
-                engineForce = 2000 // Retroceder
-                steer = angle > 0 ? 0.8 : -0.8 // Steering más agresivo
+            if (Math.abs(angle) > largeAngleThreshold) {
+                if (isStationary) {
+                    // Si está detenido, rotar directamente el cuerpo del auto
+                    const rotationForce = angle > 0 ? 800 : -800
+                    this.car.body.angularVelocity.y = rotationForce * 0.02
+
+                    // También dar un pequeño impulso hacia adelante
+                    engineForce = -1500
+                    steer = 0 // No usar steering cuando rotamos directamente
+                } else {
+                    // Si tiene velocidad, usar steering normal
+                    steer = angle > 0 ? 0.9 : -0.9
+                    engineForce = 0
+                }
+            } else if (Math.abs(angle) > angleThreshold) {
+                // Ángulo mediano: girar fuerte y acelerar poco
+                const steerStrength = Math.min(Math.abs(angle) / Math.PI, 1) * 0.9
+                steer = angle > 0 ? steerStrength : -steerStrength
+                engineForce = -1500 // Acelerar suave
+            } else {
+                // Ángulo pequeño: acelerar normal y ajustar dirección
+                const steerStrength = Math.min(Math.abs(angle) / angleThreshold, 1) * 0.4
+                steer = angle > 0 ? steerStrength : -steerStrength
+                engineForce = -4000 // Acelerar normal
             }
 
         } else {
