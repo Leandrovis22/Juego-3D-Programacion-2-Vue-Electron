@@ -5,6 +5,9 @@ import WorldManager from './WorldManager.js'
 export default class GameEngine {
     constructor(canvas) {
 
+        this.targetDirection = null // Dirección objetivo del joystick
+        this.joystickActive = false // Si el joystick está siendo usado
+
         this.lastFpsUpdate = performance.now()
         this.frameCount = 0
 
@@ -179,20 +182,55 @@ export default class GameEngine {
         if (!this.car) return
 
         let steer = 0
-        if (this.keys.a) steer = 0.9
-        if (this.keys.d) steer = -0.9
+        let engineForce = 0
 
+        if (this.joystickActive && this.targetDirection) {
+            // Calcular dirección objetivo en el mundo
+            const targetWorldDir = new THREE.Vector3(
+                this.targetDirection.x,
+                0,
+                this.targetDirection.z
+            ).normalize()
+
+            // Obtener dirección actual del auto
+            const carQuaternion = new THREE.Quaternion().copy(this.car.body.quaternion)
+            const carForward = new THREE.Vector3(0, 0, 1).applyQuaternion(carQuaternion)
+
+            // Calcular ángulo entre dirección actual y objetivo
+            const dotProduct = carForward.dot(targetWorldDir)
+            const crossProduct = carForward.clone().cross(targetWorldDir)
+            const angle = Math.atan2(crossProduct.y, dotProduct)
+
+            // Aplicar steering basado en el ángulo
+            const steerStrength = Math.min(Math.abs(angle) / Math.PI, 1) * 0.8
+            steer = angle > 0 ? steerStrength : -steerStrength
+
+            // Siempre acelerar hacia adelante cuando el joystick está activo
+            engineForce = -3000
+
+            // Si el ángulo es muy grande (> 90°), retroceder y girar
+            if (Math.abs(angle) > Math.PI / 2) {
+                engineForce = 2000 // Retroceder
+                steer = angle > 0 ? 0.8 : -0.8 // Steering más agresivo
+            }
+
+        } else {
+            // Controles de teclado normales cuando no hay joystick
+            if (this.keys.a) steer = 0.9
+            if (this.keys.d) steer = -0.9
+
+            if (this.keys.w) engineForce = -5000
+            if (this.keys.s) engineForce = 5000
+        }
+
+        // Aplicar controles al vehículo
         this.car.vehicle.setSteeringValue(steer, 0)
         this.car.vehicle.setSteeringValue(steer, 1)
-
-        let engineForce = 0
-        if (this.keys.w) engineForce = -5000
-        if (this.keys.s) engineForce = 5000
-
         this.car.vehicle.applyEngineForce(engineForce, 2)
         this.car.vehicle.applyEngineForce(engineForce, 3)
 
-        if (!this.keys.w && !this.keys.s) {
+        // Frenos
+        if (!this.joystickActive && !this.keys.w && !this.keys.s) {
             this.car.vehicle.setBrake(5, 2)
             this.car.vehicle.setBrake(5, 3)
         } else {
@@ -200,11 +238,11 @@ export default class GameEngine {
             this.car.vehicle.setBrake(0, 3)
         }
 
-        // Update chassis visual
+        // Actualizar visuales
         this.car.mesh.position.copy(this.car.body.position)
         this.car.mesh.quaternion.copy(this.car.body.quaternion)
 
-        // Update wheels visual
+        // Actualizar ruedas
         this.car.vehicle.wheelInfos.forEach((wheel, index) => {
             this.car.vehicle.updateWheelTransform(index)
             const t = wheel.worldTransform
@@ -256,21 +294,24 @@ export default class GameEngine {
             const dx = x - startX
             const dy = y - startY
             const dist = Math.min(Math.sqrt(dx * dx + dy * dy), maxDistance)
-            const angle = Math.atan2(dy, dx)
 
-            const offsetX = dist * Math.cos(angle)
-            const offsetY = dist * Math.sin(angle)
+            const offsetX = dist * Math.cos(Math.atan2(dy, dx))
+            const offsetY = dist * Math.sin(Math.atan2(dy, dx))
 
             joystick.style.transform = `translate(calc(-50% + ${offsetX}px), calc(-50% + ${offsetY}px))`
 
-            // Reset keys
-            this.keys.w = this.keys.a = this.keys.s = this.keys.d = false
-
             if (dist > 10) {
-                if (dy < -10) this.keys.w = true
-                if (dy > 10) this.keys.s = true
-                if (dx < -10) this.keys.a = true
-                if (dx > 10) this.keys.d = true
+                this.joystickActive = true
+                // Calcular dirección objetivo en coordenadas del mundo
+                // dx positivo = este (+X), dx negativo = oeste (-X)
+                // dy negativo = norte (-Z), dy positivo = sur (+Z)
+                this.targetDirection = {
+                    x: dx / dist, // Normalizado
+                    z: dy / dist  // Normalizado (dy positivo = +Z)
+                }
+            } else {
+                this.joystickActive = false
+                this.targetDirection = null
             }
         }
 
@@ -290,7 +331,9 @@ export default class GameEngine {
         container.addEventListener('touchend', () => {
             dragging = false
             joystick.style.transform = 'translate(-50%, -50%)'
-            this.keys.w = this.keys.a = this.keys.s = this.keys.d = false
+            this.joystickActive = false
+            this.targetDirection = null
+            // No resetear keys aquí, se manejan en updateCar
         })
     }
 
