@@ -5,12 +5,14 @@ import WorldManager from './WorldManager.js'
 
 export default class GameEngine {
     constructor(canvas) {
+        this.targetDirection = null
+        this.joystickActive = false
 
-        this.targetDirection = null // Dirección objetivo del joystick
-        this.joystickActive = false // Si el joystick está siendo usado
+        // Detectar si es móvil para optimizaciones
+        this.isMobile = /Mobi|Android/i.test(navigator.userAgent)
 
         this.stats = new Stats()
-        this.stats.showPanel(0) // 0 = FPS
+        this.stats.showPanel(0)
         this.stats.dom.style.position = 'absolute'
         this.stats.dom.style.top = '10px'
         this.stats.dom.style.right = '10px'
@@ -31,6 +33,9 @@ export default class GameEngine {
         this.animationId = null
         this.smoothedTarget = new THREE.Vector3()
 
+        // Contador de frames para optimizaciones
+        this.frameCount = 0
+
         // Controls
         this.keys = { w: false, a: false, s: false, d: false }
 
@@ -40,7 +45,7 @@ export default class GameEngine {
     }
 
     init() {
-        if (/Mobi|Android/i.test(navigator.userAgent)) {
+        if (this.isMobile) {
             this.setupJoystick()
         }
 
@@ -55,44 +60,96 @@ export default class GameEngine {
     initThreeJS() {
         this.scene = new THREE.Scene()
         this.scene.background = new THREE.Color(0x87CEEB)
-        this.scene.fog = new THREE.Fog(0x87CEEB, 150, 400)
 
-        this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.5, 200)
+        // Reducir distancia de fog en móvil
+        const fogNear = this.isMobile ? 100 : 150
+        const fogFar = this.isMobile ? 250 : 400
+        this.scene.fog = new THREE.Fog(0x87CEEB, fogNear, fogFar)
+
+        // Reducir FOV en móvil para mejor rendimiento
+        const fov = this.isMobile ? 65 : 75
+        this.camera = new THREE.PerspectiveCamera(fov, window.innerWidth / window.innerHeight, 0.5, this.isMobile ? 150 : 200)
         this.camera.position.set(0, 5, 11)
 
+        // Configuración optimizada para móvil
         this.renderer = new THREE.WebGLRenderer({
             canvas: this.canvas,
-            antialias: false,
-            powerPreference: "high-performance"
+            antialias: !this.isMobile, // Sin antialiasing en móvil
+            powerPreference: "high-performance",
+            stencil: false,
+            depth: true,
+            alpha: false
         })
+
         this.renderer.setSize(window.innerWidth, window.innerHeight)
-        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+
+        // Limitar pixel ratio en móvil
+        const pixelRatio = this.isMobile ? Math.min(window.devicePixelRatio, 1.5) : Math.min(window.devicePixelRatio, 2)
+        this.renderer.setPixelRatio(pixelRatio)
+
+        // Configuración de sombras optimizada
         this.renderer.shadowMap.enabled = true
-        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
+        this.renderer.shadowMap.type = THREE.BasicShadowMap
+        this.renderer.shadowMap.autoUpdate = true
+
+        // Optimizaciones adicionales
+        this.renderer.physicallyCorrectLights = false
+        this.renderer.outputColorSpace = THREE.SRGBColorSpace
+
+        // Configuraciones específicas para móvil
+        if (this.isMobile) {
+            this.renderer.precision = "mediump"
+            this.renderer.logarithmicDepthBuffer = false
+        }
     }
 
     initPhysics() {
         this.world = new CANNON.World()
         this.world.gravity.set(0, -9.82, 0)
+
+        // Configuración optimizada para móvil
         this.world.fixedTimeStep = 1 / 60
-        this.world.maxSubSteps = 3
+        this.world.maxSubSteps = this.isMobile ? 2 : 3 // Menos substeps en móvil
+
+        // Optimizaciones de physics
+        this.world.allowSleep = true
+        this.world.sleepSpeedLimit = 0.1
+        this.world.sleepTimeLimit = 1
+
+        // Broadphase más eficiente
+        this.world.broadphase = new CANNON.NaiveBroadphase()
+        this.world.broadphase.useBoundingBoxes = true
     }
 
     initLighting() {
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4)
+        const ambientIntensity = this.isMobile ? 0.6 : 0.4 // Más luz ambiente en móvil
+        const ambientLight = new THREE.AmbientLight(0xffffff, ambientIntensity)
         this.scene.add(ambientLight)
 
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8)
+        const directionalIntensity = this.isMobile ? 0.6 : 0.8 // Menos intensidad en móvil
+        const directionalLight = new THREE.DirectionalLight(0xffffff, directionalIntensity)
         directionalLight.position.set(10, 20, 10)
         directionalLight.castShadow = true
-        directionalLight.shadow.mapSize.width = 2048
-        directionalLight.shadow.mapSize.height = 2048
+
+        // Sombras optimizadas según dispositivo
+        const shadowMapSize = 2048
+        const shadowCameraFar = this.isMobile ? 60 : 100
+
+        directionalLight.shadow.mapSize.width = shadowMapSize
+        directionalLight.shadow.mapSize.height = shadowMapSize
         directionalLight.shadow.camera.near = 0.5
-        directionalLight.shadow.camera.far = 100  // Aumentado de 50 a 100
-        directionalLight.shadow.camera.left = -70  // Aumentado de -20 a -50
-        directionalLight.shadow.camera.right = 70   // Aumentado de 20 a 50
-        directionalLight.shadow.camera.top = 70     // Aumentado de 20 a 50
+        directionalLight.shadow.camera.far = shadowCameraFar
+        directionalLight.shadow.camera.left = -70
+        directionalLight.shadow.camera.right = 70
+        directionalLight.shadow.camera.top = 70
         directionalLight.shadow.camera.bottom = -70
+
+        // Optimización de sombras para móvil
+        if (this.isMobile) {
+            directionalLight.shadow.radius = 1
+            directionalLight.shadow.blurSamples = 8
+        }
+
         this.scene.add(directionalLight)
     }
 
@@ -106,20 +163,25 @@ export default class GameEngine {
         // Visual car group
         const carMesh = new THREE.Group()
 
+        // Geometrías con menos segmentos en móvil
+        const bodySegments = this.isMobile ? 1 : undefined
+
         // Car body
-        const bodyGeometry = new THREE.BoxGeometry(2, 0.5, 3)
+        const bodyGeometry = new THREE.BoxGeometry(2, 0.5, 3, bodySegments, bodySegments, bodySegments)
         const bodyMaterial = new THREE.MeshLambertMaterial({ color: 0x030459 })
         const baseMesh = new THREE.Mesh(bodyGeometry, bodyMaterial)
         baseMesh.position.y = 0.25
+        baseMesh.castShadow = true
+        baseMesh.receiveShadow = true
         carMesh.add(baseMesh)
 
         // Car roof
-        const roofGeometry = new THREE.BoxGeometry(1.6, 0.3, 1.8)
+        const roofGeometry = new THREE.BoxGeometry(1.6, 0.3, 1.8, bodySegments, bodySegments, bodySegments)
         const roofMesh = new THREE.Mesh(roofGeometry, bodyMaterial)
         roofMesh.position.y = 0.65
+        roofMesh.castShadow = true
         carMesh.add(roofMesh)
 
-        carMesh.castShadow = true
         carMesh.position.set(0, 1, 0)
         carMesh.rotation.y = Math.PI
         this.scene.add(carMesh)
@@ -165,15 +227,17 @@ export default class GameEngine {
 
         vehicle.addToWorld(this.world)
 
-        // Visual wheels
+        // Visual wheels con menos segmentos en móvil
         const wheelMeshes = []
-        const wheelGeometry = new THREE.CylinderGeometry(0.4, 0.4, 0.4, 16)
+        const wheelSegments = this.isMobile ? 8 : 16
+        const wheelGeometry = new THREE.CylinderGeometry(0.4, 0.4, 0.4, wheelSegments)
         const wheelMaterial = new THREE.MeshLambertMaterial({ color: 0x333333 })
 
         vehicle.wheelInfos.forEach(wheel => {
             const wheelMesh = new THREE.Mesh(wheelGeometry, wheelMaterial)
             wheelMesh.rotation.z = Math.PI / 2
             wheelMesh.castShadow = true
+            wheelMesh.receiveShadow = true
             this.scene.add(wheelMesh)
             wheelMeshes.push(wheelMesh)
         })
@@ -195,32 +259,27 @@ export default class GameEngine {
         let engineForce = 0
 
         if (this.joystickActive && this.targetDirection) {
-            // Calcular dirección objetivo en el mundo
             const targetWorldDir = new THREE.Vector3(
                 this.targetDirection.x,
                 0,
                 this.targetDirection.z
             ).normalize()
 
-            // Obtener dirección actual del auto
             const carQuaternion = new THREE.Quaternion().copy(this.car.body.quaternion)
             const carForward = new THREE.Vector3(0, 0, 1).applyQuaternion(carQuaternion)
 
-            // Calcular ángulo entre dirección actual y objetivo
             const dotProduct = carForward.dot(targetWorldDir)
             const crossProduct = carForward.clone().cross(targetWorldDir)
             const angle = Math.atan2(crossProduct.y, dotProduct)
 
-            const angleThreshold = Math.PI / 6 // 30 grados
-            const largeAngleThreshold = Math.PI / 2 // 90 grados
+            const angleThreshold = Math.PI / 6
+            const largeAngleThreshold = Math.PI / 2
 
-            // Verificar si el auto está prácticamente detenido
             const currentSpeed = this.car.body.velocity.length()
             const isStationary = currentSpeed < 0.5
 
             if (Math.abs(angle) > largeAngleThreshold) {
                 if (isStationary) {
-                    // Si está detenido, rotar directamente el cuerpo del auto
                     const rotationForce = angle > 0 ? 800 : -800
                     this.car.body.angularVelocity.y = rotationForce * 0.02
 
@@ -228,7 +287,6 @@ export default class GameEngine {
                     engineForce = -1500
                     steer = 0 // No usar steering cuando rotamos directamente
                 } else {
-                    // Si tiene velocidad, usar steering normal
                     steer = angle > 0 ? 0.9 : -0.9
                     engineForce = 0
                 }
@@ -238,7 +296,6 @@ export default class GameEngine {
                 steer = angle > 0 ? steerStrength : -steerStrength
                 engineForce = -1500 // Acelerar suave
             } else {
-                // Ángulo pequeño: acelerar normal y ajustar dirección
                 const steerStrength = Math.min(Math.abs(angle) / angleThreshold, 1) * 0.4
                 steer = angle > 0 ? steerStrength : -steerStrength
                 engineForce = -4000 // Acelerar normal
@@ -272,7 +329,7 @@ export default class GameEngine {
         this.car.mesh.position.copy(this.car.body.position)
         this.car.mesh.quaternion.copy(this.car.body.quaternion)
 
-        // Actualizar ruedas
+        // Actualizar ruedas (optimizar en móvil)
         this.car.vehicle.wheelInfos.forEach((wheel, index) => {
             this.car.vehicle.updateWheelTransform(index)
             const t = wheel.worldTransform
@@ -293,22 +350,22 @@ export default class GameEngine {
         const carPos = this.car.mesh.position
         const speed = this.car.body.velocity.length()
 
-        // Offset base (altura y distancia detrás del coche)
-        const cameraOffset = new THREE.Vector3(0, 5, 12)
+        // Offset optimizado para móvil
+        const baseHeight = this.isMobile ? 4 : 5
+        const baseDistance = this.isMobile ? 10 : 12
+        const cameraOffset = new THREE.Vector3(0, baseHeight, baseDistance)
 
-        // Offset dinámico según velocidad
         const dynamicOffset = cameraOffset.clone()
-        dynamicOffset.z += Math.min(speed * 0.1, 25)
+        const maxSpeedOffset = this.isMobile ? 15 : 25
+        dynamicOffset.z += Math.min(speed * 0.1, maxSpeedOffset)
 
-        // Posición objetivo
         const targetPos = carPos.clone().add(dynamicOffset)
 
-        // Interpolación suave
-        this.camera.position.lerp(targetPos, 0.08)
+        // Interpolación más suave en móvil
+        const lerpFactor = this.isMobile ? 0.06 : 0.08
+        this.camera.position.lerp(targetPos, lerpFactor)
         this.camera.lookAt(carPos)
     }
-
-
 
     setupJoystick() {
         const container = document.getElementById('joystick-container')
@@ -332,12 +389,9 @@ export default class GameEngine {
 
             if (dist > 10) {
                 this.joystickActive = true
-                // Calcular dirección objetivo en coordenadas del mundo
-                // dx positivo = este (+X), dx negativo = oeste (-X)
-                // dy negativo = norte (-Z), dy positivo = sur (+Z)
                 this.targetDirection = {
-                    x: dx / dist, // Normalizado
-                    z: dy / dist  // Normalizado (dy positivo = +Z)
+                    x: dx / dist,
+                    z: dy / dist
                 }
             } else {
                 this.joystickActive = false
@@ -345,15 +399,19 @@ export default class GameEngine {
             }
         }
 
+        // Optimizar eventos touch para mejor rendimiento
+        const touchOptions = { passive: true }
+
         container.addEventListener('touchstart', e => {
             dragging = true
             const touch = e.touches[0]
             startX = touch.clientX
             startY = touch.clientY
-        })
+        }, touchOptions)
 
         container.addEventListener('touchmove', e => {
             if (!dragging) return
+            e.preventDefault() // Solo prevenir cuando sea necesario
             const touch = e.touches[0]
             handleMove(touch.clientX, touch.clientY)
         })
@@ -363,14 +421,14 @@ export default class GameEngine {
             joystick.style.transform = 'translate(-50%, -50%)'
             this.joystickActive = false
             this.targetDirection = null
-            // No resetear keys aquí, se manejan en updateCar
-        })
+        }, touchOptions)
     }
 
     setupEventListeners() {
-        window.addEventListener('keydown', this.handleKeyDown)
-        window.addEventListener('keyup', this.handleKeyUp)
-        window.addEventListener('resize', this.handleResize)
+        const keyOptions = { passive: true }
+        window.addEventListener('keydown', this.handleKeyDown, keyOptions)
+        window.addEventListener('keyup', this.handleKeyUp, keyOptions)
+        window.addEventListener('resize', this.handleResize, keyOptions)
     }
 
     handleKeyDown(event) {
@@ -403,7 +461,11 @@ export default class GameEngine {
         this.stats.begin()
 
         const deltaTime = this.clock.getDelta()
-        this.world.step(1 / 60, deltaTime, 3)
+
+        // Limitar deltaTime para evitar saltos grandes
+        const clampedDelta = Math.min(deltaTime, 1 / 30)
+
+        this.world.step(1 / 60, clampedDelta, this.isMobile ? 2 : 3)
         this.updateCar()
         this.worldManager.updateObjects()
         this.updateCamera()
@@ -411,7 +473,6 @@ export default class GameEngine {
 
         this.stats.end()
     }
-
 
     start() {
         this.animate()
@@ -444,7 +505,6 @@ export default class GameEngine {
             this.car.body.angularVelocity.setZero()
         }
 
-        // Reset objects through WorldManager
         this.worldManager.resetObjects()
     }
 }
