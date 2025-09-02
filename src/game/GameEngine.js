@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import * as CANNON from 'cannon-es'
+import Stats from 'stats.js'
 import WorldManager from './WorldManager.js'
 
 export default class GameEngine {
@@ -8,8 +9,17 @@ export default class GameEngine {
         this.targetDirection = null // Dirección objetivo del joystick
         this.joystickActive = false // Si el joystick está siendo usado
 
-        this.lastFpsUpdate = performance.now()
-        this.frameCount = 0
+        this.stats = new Stats()
+        this.stats.showPanel(0) // 0 = FPS
+        this.stats.dom.style.position = 'absolute'
+        this.stats.dom.style.top = '10px'
+        this.stats.dom.style.right = '10px'
+        this.stats.dom.style.left = 'auto'
+        this.stats.dom.style.display = 'flex'
+        this.stats.dom.style.justifyContent = 'flex-end'
+        this.stats.dom.style.width = 'auto'
+
+        document.body.appendChild(this.stats.dom)
 
         this.canvas = canvas
         this.scene = null
@@ -390,28 +400,18 @@ export default class GameEngine {
     animate() {
         this.animationId = requestAnimationFrame(() => this.animate())
 
-        const deltaTime = Math.min(this.clock.getDelta(), 1 / 30)
-        const frameStart = performance.now()
+        this.stats.begin()
 
+        const deltaTime = this.clock.getDelta()
         this.world.step(1 / 60, deltaTime, 3)
         this.updateCar()
         this.worldManager.updateObjects()
         this.updateCamera()
         this.renderer.render(this.scene, this.camera)
 
-        const frameEnd = performance.now()
-        const frameTime = frameEnd - frameStart
-
-        this.frameCount++
-        const now = performance.now()
-        if (now - this.lastFpsUpdate >= 5000) {
-            const fps = (this.frameCount * 1000) / (now - this.lastFpsUpdate)
-            console.log(`⏱ Frame: ${frameTime.toFixed(2)} ms | FPS: ${fps.toFixed(1)}`)
-            this.frameCount = 0
-            this.lastFpsUpdate = now
-        }
-
+        this.stats.end()
     }
+
 
     start() {
         this.animate()
